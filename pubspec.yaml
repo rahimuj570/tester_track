@@ -1,0 +1,26 @@
+name: tester_track
+description: A lightweight, privacy-focused Flutter package to track tester activity and sessions in a secondary developer-owned Firebase project.
+version: 0.0.1
+homepage: https://github.com/example/tester_track
+repository: https://github.com/example/tester_track
+issue_tracker: https://github.com/example/tester_track/issues
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^3.0.0
+  firebase_auth: ^5.0.0
+  cloud_firestore: ^5.0.0
+  shared_preferences: ^2.2.0
+  device_info_plus: ^10.0.0
+  package_info_plus: ^8.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  fake_cloud_firestore: ^3.0.0

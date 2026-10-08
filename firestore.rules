@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Developer is any authenticated user NOT using anonymous authentication
+    function isDeveloper() {
+      return request.auth != null && 
+             request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Global Remote Configuration
+    // - All authenticated users (anonymous testers + dashboard developer) can read
+    // - Only developer (non-anonymous) can write
+    match /config/global {
+      allow read: if request.auth != null;
+      allow write: if isDeveloper();
+    }
+
+    // Tester Profiles
+    // - Anonymous tester can ONLY create/update/read their own document where authUid matches request.auth.uid
+    // - Tester ID and Auth UID are immutable after creation
+    // - Deletion is disabled in MVP
+    // - Dashboard developer can read all tester profiles (viewer role)
+    match /testers/{testerId} {
+      allow create: if request.auth != null 
+                    && request.resource.data.authUid == request.auth.uid
+                    && request.resource.data.testerId == testerId;
+
+      allow update: if request.auth != null 
+                    && resource.data.authUid == request.auth.uid
+                    && request.resource.data.authUid == resource.data.authUid
+                    && request.resource.data.testerId == resource.data.testerId;
+
+      allow read: if isDeveloper() 
+                  || (request.auth != null && resource.data.authUid == request.auth.uid);
+
+      allow delete: if false;
+
+      // Individual Session Documents
+      // - Anonymous tester can ONLY create/update/read sessions matching their own authUid and testerId
+      // - Session identity and ownership are immutable
+      // - Deletion is disabled in MVP
+      // - Dashboard developer can read all sessions
+      match /sessions/{sessionId} {
+        allow create: if request.auth != null 
+                      && request.resource.data.authUid == request.auth.uid
+                      && request.resource.data.testerId == testerId
+                      && request.resource.data.sessionId == sessionId
+                      && get(/databases/$(database)/documents/testers/$(testerId)).data.authUid == request.auth.uid;
+
+        allow update: if request.auth != null 
+                      && resource.data.authUid == request.auth.uid
+                      && request.resource.data.authUid == resource.data.authUid
+                      && request.resource.data.testerId == resource.data.testerId
+                      && request.resource.data.sessionId == resource.data.sessionId;
+
+        allow read: if isDeveloper() 
+                    || (request.auth != null && resource.data.authUid == request.auth.uid);
+
+        allow delete: if false;
+      }
+    }
+  }
+}
