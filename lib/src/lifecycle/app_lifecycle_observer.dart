@@ -6,11 +6,13 @@ import '../session/session_manager.dart';
 class AppLifecycleObserver with WidgetsBindingObserver {
   final SessionManager sessionManager;
   final TrackerErrorHandler errorHandler;
+  final VoidCallback? onResumed;
   bool _isAttached = false;
 
   AppLifecycleObserver({
     required this.sessionManager,
     required this.errorHandler,
+    this.onResumed,
   });
 
   /// Whether the observer is currently attached to [WidgetsBinding].
@@ -43,6 +45,7 @@ class AppLifecycleObserver with WidgetsBindingObserver {
       switch (state) {
         case AppLifecycleState.resumed:
           sessionManager.onAppResume();
+          onResumed?.call();
           break;
         case AppLifecycleState.inactive:
         case AppLifecycleState.paused:

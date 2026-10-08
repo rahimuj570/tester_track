@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'src/config/remote_config_service.dart';
 import 'src/core/constants.dart';
 import 'src/core/error_handler.dart';
 import 'src/core/tracker_options.dart';
@@ -6,6 +7,7 @@ import 'src/firebase/firebase_service.dart';
 import 'src/identity/device_info_helper.dart';
 import 'src/identity/identity_manager.dart';
 import 'src/lifecycle/app_lifecycle_observer.dart';
+import 'src/models/remote_config_data.dart';
 import 'src/session/session_manager.dart';
 import 'src/storage/firestore_repository.dart';
 import 'src/storage/local_storage.dart';
@@ -28,6 +30,7 @@ class TesterTrack {
   IdentityManager? _identityManager;
   DeviceInfoHelper? _deviceInfoHelper;
   FirestoreRepository? _firestoreRepository;
+  RemoteConfigService? _remoteConfigService;
   SessionManager? _sessionManager;
   AppLifecycleObserver? _lifecycleObserver;
   TesterTrackOptions _options = const TesterTrackOptions();
@@ -102,12 +105,29 @@ class TesterTrack {
               DeviceInfoHelper(errorHandler: tracker._errorHandler);
           final envInfo = await tracker._deviceInfoHelper!.getEnvironmentInfo();
 
-          // 6. Synchronize initial tester profile in Firestore
+          // 6. Initialize Firestore repository
           tracker._firestoreRepository = FirestoreRepository(
             firestore: tracker._firebaseService!.firestore,
             errorHandler: tracker._errorHandler,
           );
 
+          // 7. Initialize RemoteConfigService (loads cache, fetches remote config)
+          tracker._remoteConfigService = RemoteConfigService(
+            localStorage: tracker._localStorage!,
+            firestoreRepository: tracker._firestoreRepository!,
+            errorHandler: tracker._errorHandler,
+            envInfo: envInfo,
+          );
+          await tracker._remoteConfigService!.init();
+          await tracker._remoteConfigService!.fetchAndApplyConfig();
+
+          // Evaluate whether tracking is currently allowed & calculate effective sync interval
+          final isPermitted =
+              tracker._remoteConfigService!.isTrackingPermitted();
+          final effectiveSyncInterval = tracker._remoteConfigService!
+              .getEffectiveSyncInterval(tracker._options.firestoreSyncInterval);
+
+          // 8. Synchronize initial tester profile in Firestore
           if (tracker._authUid != null && tracker._testerId != null) {
             await tracker._firestoreRepository!.syncTesterProfile(
               testerId: tracker._testerId!,
@@ -116,7 +136,7 @@ class TesterTrack {
             );
           }
 
-          // 7. Initialize session manager & recover any interrupted session
+          // 9. Initialize session manager & recover any interrupted session
           tracker._sessionManager = SessionManager(
             testerId: tracker._testerId ?? 'unknown',
             authUid: tracker._authUid ?? 'unknown',
@@ -125,20 +145,42 @@ class TesterTrack {
             firestoreRepository: tracker._firestoreRepository!,
             errorHandler: tracker._errorHandler,
             options: tracker._options,
+            initialTrackingPermitted: isPermitted,
+            initialFirestoreSyncInterval: effectiveSyncInterval,
           );
 
           // Recover previously interrupted crash state
           await tracker._sessionManager!.recoverInterruptedSession();
 
-          // 8. Attach app lifecycle observer
+          // 10. Start periodic remote config refresh (every 5 minutes)
+          tracker._remoteConfigService!.startPeriodicRefresh(
+            (newConfig, permitted) {
+              tracker._handleConfigChange(newConfig, permitted);
+            },
+          );
+
+          // 11. Attach app lifecycle observer with throttled onResumed config refresh
           tracker._lifecycleObserver = AppLifecycleObserver(
             sessionManager: tracker._sessionManager!,
             errorHandler: tracker._errorHandler,
+            onResumed: () {
+              tracker._remoteConfigService?.refreshOnResumeThrottled(
+                (newConfig, permitted) {
+                  tracker._handleConfigChange(newConfig, permitted);
+                },
+              );
+            },
           );
           tracker._lifecycleObserver!.attach();
 
-          // 9. Start initial foreground session
-          await tracker._sessionManager!.startSession();
+          // 12. Start initial foreground session if tracking is permitted
+          if (isPermitted) {
+            await tracker._sessionManager!.startSession();
+          } else {
+            tracker._errorHandler.log(
+              'Initial tracking not permitted by remote configuration (enabled=${tracker._remoteConfigService?.activeConfig.enabled}).',
+            );
+          }
 
           tracker._isInitialized = true;
           tracker._errorHandler.log(
@@ -148,12 +190,33 @@ class TesterTrack {
         false;
   }
 
+  void _handleConfigChange(RemoteConfigData newConfig, bool isPermitted) {
+    _errorHandler.runGuardedSync(() {
+      if (_sessionManager == null || _remoteConfigService == null) return;
+
+      // Update tracking permission (finalizes active session if false, starts if true & in foreground)
+      _sessionManager!.setTrackingPermitted(isPermitted);
+
+      // Update Firestore sync interval if remote override is active
+      final effectiveInterval = _remoteConfigService!
+          .getEffectiveSyncInterval(_options.firestoreSyncInterval);
+      _sessionManager!.updateFirestoreSyncInterval(effectiveInterval);
+    }, operationName: 'TesterTrack._handleConfigChange');
+  }
+
   /// Manually starts activity tracking.
   void startTracking() {
     _errorHandler.runGuardedSync(() {
       if (!_isInitialized || _sessionManager == null) {
         _errorHandler
             .log('Cannot start tracking: TesterTrack is not initialized.');
+        return;
+      }
+      final isPermitted = _remoteConfigService?.isTrackingPermitted() ?? true;
+      if (!isPermitted) {
+        _errorHandler.log(
+          'Cannot start tracking: tracking is disabled by remote configuration.',
+        );
         return;
       }
       _sessionManager!.startSession();

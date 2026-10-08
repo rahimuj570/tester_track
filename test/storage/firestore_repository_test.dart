@@ -275,5 +275,28 @@ void main() {
       expect(testerDoc!.sessionCount, equals(1)); // Exactly 1, not 3
       expect(testerDoc.totalUsageSeconds, equals(900)); // Exactly 900, not 2700
     });
+
+    test('fetchRemoteConfig retrieves config/global document or returns null',
+        () async {
+      // 1. Non-existent returns null
+      final emptyConfig = await repository.fetchRemoteConfig();
+      expect(emptyConfig, isNull);
+
+      // 2. Set config/global
+      await fakeFirestore
+          .collection(TrackerConstants.collectionConfig)
+          .doc(TrackerConstants.documentGlobal)
+          .set({
+        'enabled': false,
+        'minAppVersion': '2.0.0',
+        'syncIntervalSeconds': 600,
+      });
+
+      final fetched = await repository.fetchRemoteConfig();
+      expect(fetched, isNotNull);
+      expect(fetched!.enabled, isFalse);
+      expect(fetched.minAppVersion, equals('2.0.0'));
+      expect(fetched.syncIntervalSeconds, equals(600));
+    });
   });
 }

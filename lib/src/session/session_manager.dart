@@ -10,7 +10,7 @@ import '../storage/local_storage.dart';
 import 'session_state.dart';
 
 /// Coordinates session lifecycle, local 15-second heartbeats, 5-minute Firestore syncs,
-/// and crash recovery.
+/// crash recovery, and remote configuration enable/disable compliance.
 ///
 /// Guarantees that background wall-clock time is NEVER counted towards active session duration.
 class SessionManager {
@@ -29,6 +29,8 @@ class SessionManager {
   Timer? _inactivityDebounceTimer;
   bool _isTracking = false;
   bool _isInForeground = false;
+  bool _isTrackingPermitted;
+  Duration _currentFirestoreSyncInterval;
 
   SessionManager({
     required this.testerId,
@@ -38,13 +40,65 @@ class SessionManager {
     required this.firestoreRepository,
     required this.errorHandler,
     required this.options,
-  });
+    bool initialTrackingPermitted = true,
+    Duration? initialFirestoreSyncInterval,
+  })  : _isTrackingPermitted = initialTrackingPermitted,
+        _currentFirestoreSyncInterval =
+            initialFirestoreSyncInterval ?? options.firestoreSyncInterval;
 
   /// Whether a foreground tracking session is actively in progress.
   bool get isTracking => _isTracking;
 
+  /// Whether tracking is permitted by remote configuration.
+  bool get isTrackingPermitted => _isTrackingPermitted;
+
+  /// The current active sync interval.
+  Duration get currentFirestoreSyncInterval => _currentFirestoreSyncInterval;
+
   /// The active in-memory session state if tracking.
   SessionState? get currentSession => _currentSession;
+
+  /// Updates whether remote configuration permits tracking.
+  ///
+  /// - If [permitted] is `false`: Immediately finalizes the active session (if any)
+  ///   using observed foreground duration, stops all timers, and blocks new tracking.
+  /// - If [permitted] is `true`: If the app is currently in the foreground, starts
+  ///   a fresh tracking session.
+  Future<void> setTrackingPermitted(bool permitted) async {
+    await errorHandler.runGuarded<void>(() async {
+      if (_isTrackingPermitted == permitted) return;
+      _isTrackingPermitted = permitted;
+      errorHandler.log(
+        'SessionManager tracking permission updated to: $permitted',
+      );
+
+      if (!permitted) {
+        _cancelInactivityDebounce();
+        await _finalizeCurrentSession();
+      } else {
+        if (_isInForeground && !_isTracking) {
+          await startSession();
+        }
+      }
+    }, operationName: 'SessionManager.setTrackingPermitted');
+  }
+
+  /// Updates the periodic Firestore sync interval.
+  ///
+  /// If the active interval changes while tracking, cancels the existing timer
+  /// and restarts it with the new interval, preventing duplicate timers.
+  void updateFirestoreSyncInterval(Duration newInterval) {
+    errorHandler.runGuardedSync(() {
+      if (_currentFirestoreSyncInterval == newInterval) return;
+      errorHandler.log(
+        'Updating Firestore sync interval: ${_currentFirestoreSyncInterval.inSeconds}s -> ${newInterval.inSeconds}s',
+      );
+      _currentFirestoreSyncInterval = newInterval;
+      if (_isTracking && _currentSession != null) {
+        _startFirestoreSyncTimer();
+      }
+    }, operationName: 'SessionManager.updateFirestoreSyncInterval');
+  }
 
   /// Recovers an interrupted or crashed session from local storage upon app startup.
   ///
@@ -102,9 +156,16 @@ class SessionManager {
   /// Starts a new session or continues tracking.
   ///
   /// Idempotent: repeated calls when already tracking do nothing.
+  /// Does not start a session if remote tracking is disabled.
   Future<void> startSession() async {
     await errorHandler.runGuarded<void>(() async {
       _cancelInactivityDebounce();
+
+      if (!_isTrackingPermitted) {
+        errorHandler.log(
+            'Tracking is disabled by remote configuration. startSession ignored.');
+        return;
+      }
 
       if (_isTracking && _currentSession != null) {
         errorHandler.log(
@@ -153,7 +214,7 @@ class SessionManager {
       // 3. Start local heartbeat timer (15s, 0 Firestore writes)
       _startLocalHeartbeatTimer();
 
-      // 4. Start periodic Firestore sync timer (5 minutes)
+      // 4. Start periodic Firestore sync timer
       _startFirestoreSyncTimer();
 
       errorHandler.log('Started session $sessionId.');
@@ -191,6 +252,14 @@ class SessionManager {
   /// Handles app entering foreground.
   void onAppResume() {
     errorHandler.runGuardedSync(() {
+      _isInForeground = true;
+
+      if (!_isTrackingPermitted) {
+        errorHandler
+            .log('App resumed, but tracking is disabled by remote config.');
+        return;
+      }
+
       final now = DateTime.now().toUtc();
 
       if (_inactivityDebounceTimer != null &&
@@ -200,7 +269,6 @@ class SessionManager {
 
         // Reset lastActiveTime to now so background elapsed interval is NEVER counted
         _lastActiveTime = now;
-        _isInForeground = true;
 
         if (_currentSession != null) {
           _currentSession = _currentSession!.copyWith(
@@ -238,7 +306,6 @@ class SessionManager {
     final session = _currentSession;
     if (session == null) {
       _isTracking = false;
-      _isInForeground = false;
       return;
     }
 
@@ -272,7 +339,6 @@ class SessionManager {
 
     _currentSession = null;
     _isTracking = false;
-    _isInForeground = false;
   }
 
   /// Accumulates observed active foreground time into [_currentSession].
@@ -306,10 +372,11 @@ class SessionManager {
     });
   }
 
-  /// Starts the periodic Firestore sync timer (default: 5 minutes).
+  /// Starts the periodic Firestore sync timer using [_currentFirestoreSyncInterval].
+  /// Guarantees that any prior timer is cancelled before starting a new one.
   void _startFirestoreSyncTimer() {
     _firestoreSyncTimer?.cancel();
-    _firestoreSyncTimer = Timer.periodic(options.firestoreSyncInterval, (_) {
+    _firestoreSyncTimer = Timer.periodic(_currentFirestoreSyncInterval, (_) {
       errorHandler.runGuardedSync(() {
         if (_currentSession == null) {
           return;

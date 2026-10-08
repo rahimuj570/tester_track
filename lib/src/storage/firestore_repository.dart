@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants.dart';
 import '../core/error_handler.dart';
 import '../identity/device_info_helper.dart';
+import '../models/remote_config_data.dart';
 import '../models/session_data.dart';
 import '../models/tester_data.dart';
 
@@ -14,6 +15,13 @@ class FirestoreRepository {
     required this.firestore,
     required this.errorHandler,
   });
+
+  /// Document reference for the global remote config document.
+  DocumentReference<Map<String, dynamic>> _configGlobalDoc() {
+    return firestore
+        .collection(TrackerConstants.collectionConfig)
+        .doc(TrackerConstants.documentGlobal);
+  }
 
   /// Document reference for a tester profile.
   DocumentReference<Map<String, dynamic>> _testerDoc(String testerId) {
@@ -28,6 +36,24 @@ class FirestoreRepository {
     return _testerDoc(testerId)
         .collection(TrackerConstants.collectionSessions)
         .doc(sessionId);
+  }
+
+  /// Fetches the remote config document `config/global`.
+  ///
+  /// Returns null if the document does not exist, offline, or if an error occurs.
+  Future<RemoteConfigData?> fetchRemoteConfig(
+      {RemoteConfigData? fallback}) async {
+    return await errorHandler.runGuarded<RemoteConfigData?>(() async {
+      final docSnap = await _configGlobalDoc().get();
+      if (!docSnap.exists || docSnap.data() == null) {
+        errorHandler
+            .log('Remote config document config/global does not exist.');
+        return null;
+      }
+      return RemoteConfigData.fromMap(docSnap.data()!, fallback: fallback);
+    },
+        operationName: 'FirestoreRepository.fetchRemoteConfig',
+        fallbackValue: null);
   }
 
   /// Synchronizes or creates the tester profile document idempotently.

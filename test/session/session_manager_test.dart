@@ -101,6 +101,24 @@ void main() {
           sessionManager.currentSession!.sessionId, equals(initialSessionId));
     });
 
+    test('startSession is ignored when tracking is not permitted', () async {
+      final disabledManager = SessionManager(
+        testerId: 'T001',
+        authUid: 'anon_uid_123',
+        envInfo: envInfo,
+        localStorage: localStorage,
+        firestoreRepository: repository,
+        errorHandler: errorHandler,
+        options: options,
+        initialTrackingPermitted: false,
+      );
+
+      await disabledManager.startSession();
+      expect(disabledManager.isTracking, isFalse);
+      expect(disabledManager.currentSession, isNull);
+      disabledManager.dispose();
+    });
+
     test('stopTracking finalizes session in Firestore and clears local state',
         () async {
       await sessionManager.startSession();
@@ -120,6 +138,74 @@ void main() {
       expect(sessionDoc, isNotNull);
       expect(sessionDoc!.isFinalized, isTrue);
       expect(sessionDoc.endedAt, isNotNull);
+    });
+
+    test('setTrackingPermitted(false) remotely disables active session',
+        () async {
+      await sessionManager.startSession();
+      final sessionId = sessionManager.currentSession!.sessionId;
+      expect(sessionManager.isTracking, isTrue);
+
+      // Simulate remote kill switch
+      await sessionManager.setTrackingPermitted(false);
+
+      expect(sessionManager.isTracking, isFalse);
+      expect(sessionManager.isTrackingPermitted, isFalse);
+      expect(sessionManager.currentSession, isNull);
+
+      // Verify session finalized in Firestore
+      final sessionDoc = await repository.getSession('T001', sessionId);
+      expect(sessionDoc, isNotNull);
+      expect(sessionDoc!.isFinalized, isTrue);
+    });
+
+    test(
+        'setTrackingPermitted(true) re-enables tracking and creates a fresh session',
+        () async {
+      await sessionManager.startSession();
+      final firstSessionId = sessionManager.currentSession!.sessionId;
+
+      // Disable
+      await sessionManager.setTrackingPermitted(false);
+      expect(sessionManager.isTracking, isFalse);
+
+      // Wait a tick so timestamps differ
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      // App is still in foreground; re-enable tracking
+      await sessionManager.setTrackingPermitted(true);
+
+      expect(sessionManager.isTracking, isTrue);
+      expect(sessionManager.isTrackingPermitted, isTrue);
+      expect(sessionManager.currentSession, isNotNull);
+
+      // Crucial: Fresh session is created, NOT reopening the old session
+      final secondSessionId = sessionManager.currentSession!.sessionId;
+      expect(secondSessionId, isNot(equals(firstSessionId)));
+
+      final firstDoc = await repository.getSession('T001', firstSessionId);
+      expect(firstDoc!.isFinalized, isTrue);
+
+      final secondDoc = await repository.getSession('T001', secondSessionId);
+      expect(secondDoc!.isFinalized, isFalse);
+    });
+
+    test('updateFirestoreSyncInterval safely updates sync timer interval',
+        () async {
+      await sessionManager.startSession();
+      expect(sessionManager.currentFirestoreSyncInterval,
+          equals(options.firestoreSyncInterval));
+
+      sessionManager
+          .updateFirestoreSyncInterval(const Duration(milliseconds: 120));
+      expect(sessionManager.currentFirestoreSyncInterval,
+          equals(const Duration(milliseconds: 120)));
+
+      // Repeating with same interval does not recreate timers
+      sessionManager
+          .updateFirestoreSyncInterval(const Duration(milliseconds: 120));
+      expect(sessionManager.currentFirestoreSyncInterval,
+          equals(const Duration(milliseconds: 120)));
     });
 
     test(
