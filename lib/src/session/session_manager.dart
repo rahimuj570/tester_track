@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import '../core/constants.dart';
 import '../core/error_handler.dart';
 import '../core/tracker_options.dart';
@@ -10,6 +11,8 @@ import 'session_state.dart';
 
 /// Coordinates session lifecycle, local 15-second heartbeats, 5-minute Firestore syncs,
 /// and crash recovery.
+///
+/// Guarantees that background wall-clock time is NEVER counted towards active session duration.
 class SessionManager {
   final String testerId;
   final String authUid;
@@ -20,10 +23,12 @@ class SessionManager {
   final TesterTrackOptions options;
 
   SessionState? _currentSession;
+  DateTime? _lastActiveTime;
   Timer? _localHeartbeatTimer;
   Timer? _firestoreSyncTimer;
   Timer? _inactivityDebounceTimer;
   bool _isTracking = false;
+  bool _isInForeground = false;
 
   SessionManager({
     required this.testerId,
@@ -43,8 +48,8 @@ class SessionManager {
 
   /// Recovers an interrupted or crashed session from local storage upon app startup.
   ///
-  /// CRITICAL: Interrupted session duration is calculated STRICTLY between
-  /// [startedAt] and [lastHeartbeatAt]. It NEVER counts time while the process was dead.
+  /// CRITICAL: Interrupted session duration is calculated STRICTLY from observed
+  /// foreground duration ([accumulatedDurationSeconds]). It NEVER counts time while the process was dead.
   Future<void> recoverInterruptedSession() async {
     await errorHandler.runGuarded<void>(() async {
       final raw =
@@ -71,17 +76,26 @@ class SessionManager {
           'last heartbeat at ${recoveredState.lastHeartbeatAt}. Recovered duration: ${duration}s.',
         );
 
-        await firestoreRepository.finalizeSession(
+        final success = await firestoreRepository.finalizeSession(
           testerId: recoveredState.testerId,
           sessionId: recoveredState.sessionId,
           endedAt: recoveredState.lastHeartbeatAt,
           durationSeconds: duration,
           activeDate: recoveredState.activeDate,
         );
-      }
 
-      await localStorage.remove(TrackerConstants.prefsActiveSessionKey);
-      errorHandler.log('Interrupted session recovery completed.');
+        // Safe clearing: only clear local recovery state if Firestore finalization succeeded
+        if (success) {
+          await localStorage.remove(TrackerConstants.prefsActiveSessionKey);
+          errorHandler
+              .log('Interrupted session recovery completed successfully.');
+        } else {
+          errorHandler.log(
+              'Crash recovery write failed. Retaining local state for next attempt.');
+        }
+      } else {
+        await localStorage.remove(TrackerConstants.prefsActiveSessionKey);
+      }
     }, operationName: 'SessionManager.recoverInterruptedSession');
   }
 
@@ -101,12 +115,16 @@ class SessionManager {
       final now = DateTime.now().toUtc();
       final sessionId = 'sess_${testerId}_${now.millisecondsSinceEpoch}';
 
+      _lastActiveTime = now;
+      _isInForeground = true;
+
       _currentSession = SessionState(
         sessionId: sessionId,
         testerId: testerId,
         authUid: authUid,
         startedAt: now,
         lastHeartbeatAt: now,
+        accumulatedDurationSeconds: 0,
         appVersion: envInfo.appVersion,
         platform: envInfo.platform,
         isFinalized: false,
@@ -148,6 +166,12 @@ class SessionManager {
       if (!_isTracking || _currentSession == null) {
         return;
       }
+
+      _isInForeground = false;
+
+      // Accumulate foreground time up to this exact moment
+      _accumulateActiveForegroundTime();
+
       if (_inactivityDebounceTimer != null &&
           _inactivityDebounceTimer!.isActive) {
         return;
@@ -167,13 +191,26 @@ class SessionManager {
   /// Handles app entering foreground.
   void onAppResume() {
     errorHandler.runGuardedSync(() {
+      final now = DateTime.now().toUtc();
+
       if (_inactivityDebounceTimer != null &&
           _inactivityDebounceTimer!.isActive) {
         _inactivityDebounceTimer!.cancel();
         _inactivityDebounceTimer = null;
-        _updateLocalHeartbeatTimestamp();
+
+        // Reset lastActiveTime to now so background elapsed interval is NEVER counted
+        _lastActiveTime = now;
+        _isInForeground = true;
+
+        if (_currentSession != null) {
+          _currentSession = _currentSession!.copyWith(
+            lastHeartbeatAt: now,
+          );
+          unawaited(_persistLocalSessionState());
+        }
+
         errorHandler.log(
-          'App resumed within debounce window. Keeping existing session ${_currentSession?.sessionId} active.',
+          'App resumed within debounce window. Keeping existing session ${_currentSession?.sessionId} active. Background interval excluded.',
         );
         return;
       }
@@ -194,24 +231,29 @@ class SessionManager {
     }, operationName: 'SessionManager.stopTracking');
   }
 
-  /// Finalizes the current session in Firestore and clears local state.
+  /// Finalizes the current session in Firestore and clears local state if successful.
   Future<void> _finalizeCurrentSession() async {
     _cancelTimers();
 
     final session = _currentSession;
     if (session == null) {
       _isTracking = false;
+      _isInForeground = false;
       return;
     }
 
-    final duration = session.observedDurationSeconds;
-    final endedAt = session.lastHeartbeatAt;
+    if (_isInForeground) {
+      _accumulateActiveForegroundTime();
+    }
+
+    final duration = _currentSession!.observedDurationSeconds;
+    final endedAt = _currentSession!.lastHeartbeatAt;
 
     errorHandler.log(
       'Finalizing session ${session.sessionId}: ended at $endedAt, duration: ${duration}s.',
     );
 
-    await firestoreRepository.finalizeSession(
+    final success = await firestoreRepository.finalizeSession(
       testerId: session.testerId,
       sessionId: session.sessionId,
       endedAt: endedAt,
@@ -219,30 +261,49 @@ class SessionManager {
       activeDate: session.activeDate,
     );
 
-    await localStorage.remove(TrackerConstants.prefsActiveSessionKey);
+    // Only clear local recovery state if finalization succeeded in Firestore
+    if (success) {
+      await localStorage.remove(TrackerConstants.prefsActiveSessionKey);
+    } else {
+      errorHandler.log(
+        'Finalize write failed or offline. Preserving local session state for recovery.',
+      );
+    }
+
     _currentSession = null;
     _isTracking = false;
+    _isInForeground = false;
+  }
+
+  /// Accumulates observed active foreground time into [_currentSession].
+  void _accumulateActiveForegroundTime() {
+    if (_currentSession == null || _lastActiveTime == null) {
+      return;
+    }
+
+    final now = DateTime.now().toUtc();
+    final elapsedSeconds = max(0, now.difference(_lastActiveTime!).inSeconds);
+
+    _lastActiveTime = now;
+    _currentSession = _currentSession!.copyWith(
+      lastHeartbeatAt: now,
+      accumulatedDurationSeconds:
+          _currentSession!.accumulatedDurationSeconds + elapsedSeconds,
+    );
+    unawaited(_persistLocalSessionState());
   }
 
   /// Starts the local-only heartbeat timer (default: 15s).
   void _startLocalHeartbeatTimer() {
     _localHeartbeatTimer?.cancel();
     _localHeartbeatTimer = Timer.periodic(options.localHeartbeatInterval, (_) {
-      _updateLocalHeartbeatTimestamp();
+      errorHandler.runGuardedSync(() {
+        if (!_isInForeground || _currentSession == null) {
+          return;
+        }
+        _accumulateActiveForegroundTime();
+      }, operationName: 'SessionManager._localHeartbeat');
     });
-  }
-
-  /// Updates the local heartbeat timestamp and persists to local storage (0 Firestore writes).
-  void _updateLocalHeartbeatTimestamp() {
-    errorHandler.runGuardedSync(() {
-      if (_currentSession == null) {
-        return;
-      }
-      _currentSession = _currentSession!.copyWith(
-        lastHeartbeatAt: DateTime.now().toUtc(),
-      );
-      unawaited(_persistLocalSessionState());
-    }, operationName: 'SessionManager._updateLocalHeartbeatTimestamp');
   }
 
   /// Starts the periodic Firestore sync timer (default: 5 minutes).
@@ -252,6 +313,9 @@ class SessionManager {
       errorHandler.runGuardedSync(() {
         if (_currentSession == null) {
           return;
+        }
+        if (_isInForeground) {
+          _accumulateActiveForegroundTime();
         }
         final duration = _currentSession!.observedDurationSeconds;
         unawaited(firestoreRepository.updateSessionProgress(

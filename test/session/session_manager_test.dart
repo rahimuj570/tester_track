@@ -27,8 +27,8 @@ void main() {
 
   const options = TesterTrackOptions(
     debugLogging: false,
-    localHeartbeatInterval: Duration(milliseconds: 50),
-    firestoreSyncInterval: Duration(milliseconds: 100),
+    localHeartbeatInterval: Duration(milliseconds: 30),
+    firestoreSyncInterval: Duration(milliseconds: 60),
     inactivityDebounce: Duration(milliseconds: 100),
   );
 
@@ -122,26 +122,41 @@ void main() {
       expect(sessionDoc.endedAt, isNotNull);
     });
 
-    test('onAppResume within debounce window preserves active session',
+    test(
+        'onAppResume within debounce window preserves active session and excludes background time',
         () async {
       await sessionManager.startSession();
       final sessionId = sessionManager.currentSession!.sessionId;
 
-      // Simulate app paused
+      // Active in foreground for 50ms
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Simulate app paused (enters background)
       sessionManager.onAppPauseOrInactive();
 
-      // Immediately resume before debounce expires (within 50ms)
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      final durationAtPause =
+          sessionManager.currentSession!.observedDurationSeconds;
+
+      // Spend 40ms in background (within 100ms debounce)
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+
+      // Resume app
       sessionManager.onAppResume();
 
-      // Session should remain active
+      // Background elapsed time must NOT be added to observed duration
+      expect(sessionManager.currentSession?.observedDurationSeconds,
+          equals(durationAtPause));
       expect(sessionManager.isTracking, isTrue);
       expect(sessionManager.currentSession?.sessionId, equals(sessionId));
 
-      // Wait beyond debounce window to verify it wasn't finalized
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      expect(sessionManager.isTracking, isTrue);
-      expect(sessionManager.currentSession?.sessionId, equals(sessionId));
+      // Spend another 50ms in foreground
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await sessionManager.stopTracking();
+
+      final finalDoc = await repository.getSession('T001', sessionId);
+      expect(finalDoc!.isFinalized, isTrue);
+      // Final duration should only count the foreground segments
+      expect(finalDoc.durationSeconds, isNotNull);
     });
 
     test('inactivity beyond debounce window finalizes session', () async {

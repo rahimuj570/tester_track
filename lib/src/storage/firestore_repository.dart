@@ -170,7 +170,11 @@ class FirestoreRepository {
 
   /// Finalizes an active session with its final observed end time and duration.
   ///
-  /// Idempotent: Safely marks [isFinalized] true and updates the tester profile aggregates.
+  /// Concurrency-Safe: Uses a Firestore transaction with optimistic concurrency control.
+  /// If multiple concurrent calls attempt to finalize the same session, only the first
+  /// caller modifies the session and increments tester aggregates. Subsequent or retried
+  /// calls detect [isFinalized == true] inside the transaction and safely exit without
+  /// double-counting totals.
   Future<bool> finalizeSession({
     required String testerId,
     required String sessionId,
@@ -179,80 +183,71 @@ class FirestoreRepository {
     required String activeDate,
   }) async {
     return await errorHandler.runGuarded<bool>(() async {
-          final docRef = _sessionDoc(testerId, sessionId);
-          final sessionSnap = await docRef.get();
+          final sessionRef = _sessionDoc(testerId, sessionId);
+          final testerRef = _testerDoc(testerId);
 
-          if (!sessionSnap.exists || sessionSnap.data() == null) {
+          return await firestore.runTransaction<bool>((transaction) async {
+            // ALL READS MUST OCCUR BEFORE ANY WRITES IN FIRESTORE TRANSACTIONS
+            final sessionSnap = await transaction.get(sessionRef);
+
+            if (!sessionSnap.exists || sessionSnap.data() == null) {
+              errorHandler.log(
+                  'Cannot finalize session $sessionId: document not found in Firestore.');
+              return false;
+            }
+
+            final existingSession = SessionData.fromMap(sessionSnap.data()!);
+            if (existingSession.isFinalized) {
+              errorHandler.log(
+                  'Session $sessionId is already finalized in transaction. Skipping duplicate aggregate update.');
+              return true;
+            }
+
+            final testerSnap = await transaction.get(testerRef);
+
+            // ALL WRITES OCCUR AFTER ALL READS
+            // 1. Mark session finalized
+            transaction.update(sessionRef, {
+              'isFinalized': true,
+              'endedAt': endedAt.toUtc().toIso8601String(),
+              'durationSeconds': durationSeconds,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+
+            // 2. Atomically update tester profile aggregates
+            if (testerSnap.exists && testerSnap.data() != null) {
+              final tester = TesterData.fromMap(testerSnap.data()!);
+
+              final datesSet = <String>{
+                ...tester.recentActiveDates,
+                activeDate
+              };
+              final updatedDates = datesSet.toList()..sort();
+              if (updatedDates.length > TrackerConstants.maxRecentActiveDates) {
+                updatedDates.removeRange(
+                    0,
+                    updatedDates.length -
+                        TrackerConstants.maxRecentActiveDates);
+              }
+
+              transaction.update(testerRef, {
+                'lastSeen': endedAt.toUtc().toIso8601String(),
+                'sessionCount': tester.sessionCount + 1,
+                'totalUsageSeconds': tester.totalUsageSeconds + durationSeconds,
+                'activeDaysCount': datesSet.length,
+                'recentActiveDates': updatedDates,
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+            }
+
             errorHandler.log(
-                'Cannot finalize session $sessionId: document not found in Firestore.');
-            return false;
-          }
-
-          final existingSession = SessionData.fromMap(sessionSnap.data()!);
-          if (existingSession.isFinalized) {
-            errorHandler
-                .log('Session $sessionId is already finalized. Skipping.');
+                'Transactionally finalized session $sessionId (duration: ${durationSeconds}s) and updated aggregates.');
             return true;
-          }
-
-          await docRef.update({
-            'isFinalized': true,
-            'endedAt': endedAt.toUtc().toIso8601String(),
-            'durationSeconds': durationSeconds,
-            'updatedAt': FieldValue.serverTimestamp(),
           });
-          errorHandler.log(
-              'Finalized session $sessionId (final duration: ${durationSeconds}s)');
-
-          // Update tester summary aggregates idempotently
-          await _updateTesterAggregatesOnSessionFinalized(
-            testerId: testerId,
-            sessionDurationSeconds: durationSeconds,
-            activeDate: activeDate,
-            endedAt: endedAt,
-          );
-
-          return true;
         },
             operationName: 'FirestoreRepository.finalizeSession',
             fallbackValue: false) ??
         false;
-  }
-
-  /// Updates tester summary aggregates upon session finalization.
-  Future<void> _updateTesterAggregatesOnSessionFinalized({
-    required String testerId,
-    required int sessionDurationSeconds,
-    required String activeDate,
-    required DateTime endedAt,
-  }) async {
-    try {
-      final testerRef = _testerDoc(testerId);
-      final docSnap = await testerRef.get();
-      if (!docSnap.exists || docSnap.data() == null) return;
-
-      final tester = TesterData.fromMap(docSnap.data()!);
-
-      // Bounded recent active dates (capped at maxRecentActiveDates, e.g. 30)
-      final datesSet = <String>{...tester.recentActiveDates, activeDate};
-      final updatedDates = datesSet.toList()..sort();
-      if (updatedDates.length > TrackerConstants.maxRecentActiveDates) {
-        updatedDates.removeRange(
-            0, updatedDates.length - TrackerConstants.maxRecentActiveDates);
-      }
-
-      await testerRef.update({
-        'lastSeen': endedAt.toUtc().toIso8601String(),
-        'sessionCount': tester.sessionCount + 1,
-        'totalUsageSeconds': tester.totalUsageSeconds + sessionDurationSeconds,
-        'activeDaysCount': datesSet.length,
-        'recentActiveDates': updatedDates,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      errorHandler.log('Updated tester aggregates for $testerId.');
-    } catch (e) {
-      errorHandler.log('Failed to update tester aggregates: $e');
-    }
   }
 
   /// Fetches a specific session document.

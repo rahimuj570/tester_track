@@ -177,7 +177,7 @@ void main() {
       final progressDoc = await repository.getSession('T001', 'sess_T001_123');
       expect(progressDoc!.durationSeconds, equals(300));
 
-      // 3. Finalize session
+      // 3. Finalize session atomically
       final finalized = await repository.finalizeSession(
         testerId: 'T001',
         sessionId: 'sess_T001_123',
@@ -192,12 +192,88 @@ void main() {
       expect(finalizedDoc.durationSeconds, equals(600));
       expect(finalizedDoc.endedAt, equals(ended));
 
-      // 4. Verify tester aggregates updated
+      // 4. Verify tester aggregates updated atomically
       final testerDoc = await repository.getTesterProfile('T001');
       expect(testerDoc, isNotNull);
       expect(testerDoc!.sessionCount, equals(1));
       expect(testerDoc.totalUsageSeconds, equals(600));
       expect(testerDoc.recentActiveDates, contains('2026-10-08'));
+
+      // 5. Idempotent retry: finalizeSession called again must NOT double-count aggregates
+      final retryFinalized = await repository.finalizeSession(
+        testerId: 'T001',
+        sessionId: 'sess_T001_123',
+        endedAt: ended,
+        durationSeconds: 600,
+        activeDate: '2026-10-08',
+      );
+      expect(retryFinalized, isTrue);
+
+      final recheckedTesterDoc = await repository.getTesterProfile('T001');
+      expect(recheckedTesterDoc!.sessionCount, equals(1)); // Still 1, NOT 2!
+      expect(recheckedTesterDoc.totalUsageSeconds,
+          equals(600)); // Still 600, NOT 1200!
+    });
+
+    test(
+        'concurrent finalizeSession calls produce exactly one aggregate update',
+        () async {
+      final started = DateTime.utc(2026, 10, 8, 11, 0, 0);
+      final ended = DateTime.utc(2026, 10, 8, 11, 15, 0);
+
+      await repository.syncTesterProfile(
+        testerId: 'T003',
+        authUid: 'anon_uid_789',
+        envInfo: envInfo,
+      );
+
+      final session = SessionData(
+        sessionId: 'sess_T003_999',
+        testerId: 'T003',
+        authUid: 'anon_uid_789',
+        startedAt: started,
+        endedAt: null,
+        durationSeconds: 0,
+        activeDate: '2026-10-08',
+        appVersion: '1.0.0 (1)',
+        platform: 'android',
+        isFinalized: false,
+      );
+
+      await repository.createSession(session);
+
+      // Fire 3 simultaneous concurrent finalizeSession calls
+      final results = await Future.wait([
+        repository.finalizeSession(
+          testerId: 'T003',
+          sessionId: 'sess_T003_999',
+          endedAt: ended,
+          durationSeconds: 900,
+          activeDate: '2026-10-08',
+        ),
+        repository.finalizeSession(
+          testerId: 'T003',
+          sessionId: 'sess_T003_999',
+          endedAt: ended,
+          durationSeconds: 900,
+          activeDate: '2026-10-08',
+        ),
+        repository.finalizeSession(
+          testerId: 'T003',
+          sessionId: 'sess_T003_999',
+          endedAt: ended,
+          durationSeconds: 900,
+          activeDate: '2026-10-08',
+        ),
+      ]);
+
+      expect(results.every((r) => r == true), isTrue);
+
+      // Verify that aggregate counts were incremented exactly ONCE
+      final testerDoc = await repository.getTesterProfile('T003');
+      expect(testerDoc, isNotNull);
+      expect(testerDoc!.sessionCount, equals(1)); // Exactly 1, not 3
+      expect(testerDoc.totalUsageSeconds, equals(900)); // Exactly 900, not 2700
     });
   });
 }

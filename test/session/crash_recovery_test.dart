@@ -48,10 +48,10 @@ void main() {
 
   group('Crash Recovery', () {
     test(
-        'recovers interrupted session using strictly lastHeartbeatAt and NOT startup time',
+        'recovers interrupted session using strictly accumulated foreground duration and NOT startup time',
         () async {
-      // Simulate session started at 10:00:00, last heartbeat at 10:04:45 (285s duration)
-      // Process killed immediately after, and app restarts much later at 14:00:00
+      // Simulate session started at 10:00:00, last heartbeat at 10:04:45 (285s foreground duration)
+      // Process killed immediately after, and app restarts much later at 14:00:00 (4 hours later)
       final started = DateTime.utc(2026, 10, 8, 10, 0, 0);
       final lastHeartbeat = DateTime.utc(2026, 10, 8, 10, 4, 45);
 
@@ -73,13 +73,14 @@ void main() {
         ),
       );
 
-      // 2. Persist in-flight state in LocalStorage (as if app crashed unexpectedly)
+      // 2. Persist in-flight state in LocalStorage with accumulatedDurationSeconds = 285
       final crashedState = SessionState(
         sessionId: sessionId,
         testerId: 'T001',
         authUid: 'anon_uid_123',
         startedAt: started,
         lastHeartbeatAt: lastHeartbeat,
+        accumulatedDurationSeconds: 285,
         appVersion: '1.0.0 (1)',
         platform: 'android',
         isFinalized: false,
@@ -102,7 +103,7 @@ void main() {
 
       await newSessionManager.recoverInterruptedSession();
 
-      // 4. Verify that the recovered session in Firestore has exact duration 285s
+      // 4. Verify that the recovered session in Firestore has exact duration 285s (NOT 4 hours!)
       final finalizedSession = await repository.getSession('T001', sessionId);
       expect(finalizedSession, isNotNull);
       expect(finalizedSession!.isFinalized, isTrue);
@@ -113,10 +114,14 @@ void main() {
       expect(localStorage.getString(TrackerConstants.prefsActiveSessionKey),
           isNull);
 
-      // 5. Repeated recovery call is idempotent
+      // 5. Repeated recovery call is idempotent and does not modify duration or aggregates
       await newSessionManager.recoverInterruptedSession();
       final recheckedSession = await repository.getSession('T001', sessionId);
       expect(recheckedSession!.durationSeconds, equals(285));
+
+      final testerDoc = await repository.getTesterProfile('T001');
+      expect(testerDoc!.sessionCount, equals(1));
+      expect(testerDoc.totalUsageSeconds, equals(285));
     });
   });
 }

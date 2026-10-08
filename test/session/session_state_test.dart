@@ -3,9 +3,7 @@ import 'package:tester_track/src/session/session_state.dart';
 
 void main() {
   group('SessionState', () {
-    test(
-        'observedDurationSeconds calculates exact difference between start and last heartbeat',
-        () {
+    test('observedDurationSeconds returns accumulatedDurationSeconds', () {
       final started = DateTime.utc(2026, 10, 8, 10, 0, 0);
       final lastHeartbeat = DateTime.utc(2026, 10, 8, 10, 4, 45);
 
@@ -15,28 +13,27 @@ void main() {
         authUid: 'uid_123',
         startedAt: started,
         lastHeartbeatAt: lastHeartbeat,
+        accumulatedDurationSeconds: 285,
         appVersion: '1.0.0 (1)',
         platform: 'android',
         isFinalized: false,
       );
 
-      // Duration must be 4m45s = 285s
+      // Duration must be exact 285s
       expect(state.observedDurationSeconds, equals(285));
       expect(state.activeDate, equals('2026-10-08'));
     });
 
-    test(
-        'observedDurationSeconds returns 0 if lastHeartbeat is before startedAt',
-        () {
-      final started = DateTime.utc(2026, 10, 8, 10, 5, 0);
-      final invalidHeartbeat = DateTime.utc(2026, 10, 8, 10, 0, 0);
+    test('observedDurationSeconds clamps negative values to 0', () {
+      final started = DateTime.utc(2026, 10, 8, 10, 0, 0);
 
       final state = SessionState(
         sessionId: 'sess_T001_123',
         testerId: 'T001',
         authUid: 'uid_123',
         startedAt: started,
-        lastHeartbeatAt: invalidHeartbeat,
+        lastHeartbeatAt: started,
+        accumulatedDurationSeconds: -10,
         appVersion: '1.0.0',
         platform: 'android',
         isFinalized: false,
@@ -55,6 +52,7 @@ void main() {
         authUid: 'uid_123',
         startedAt: started,
         lastHeartbeatAt: lastHeartbeat,
+        accumulatedDurationSeconds: 915,
         appVersion: '1.2.0 (42)',
         platform: 'ios',
         isFinalized: false,
