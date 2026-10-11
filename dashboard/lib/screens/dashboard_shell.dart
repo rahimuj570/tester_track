@@ -191,14 +191,18 @@ class _DashboardShellState extends State<DashboardShell> {
   PreferredSizeWidget _buildAppBar(BuildContext context, DashboardState state) {
     final activeProject = state.activeProject;
     final user = state.currentUser;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isCompact = screenWidth < 750;
+    final isVeryCompact = screenWidth < 500;
 
     return AppBar(
       backgroundColor: AppTheme.surfaceDark,
       elevation: 0,
       title: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
@@ -206,92 +210,110 @@ class _DashboardShellState extends State<DashboardShell> {
             child: const Icon(
               Icons.track_changes_rounded,
               color: AppTheme.primaryColor,
-              size: 20,
+              size: 18,
             ),
           ),
-          const SizedBox(width: 12),
-          const Text(
-            'TesterTrack',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(width: 24),
-
-          // Active Project Selector
-          if (activeProject != null)
-            PopupMenuButton<Object?>(
-              tooltip: 'Switch Active Firebase Project',
-              onSelected: (val) {
-                if (val is FirebaseProjectConfig) {
-                  state.selectProject(val);
-                } else if (val == '__add__') {
-                  _openAddProject(context);
-                }
-              },
-              itemBuilder: (ctx) {
-                return [
-                  ...state.projects.map((p) {
-                    final isCur = p.id == activeProject.id;
-                    return PopupMenuItem<Object?>(
-                      value: p,
-                      child: Row(
-                        children: [
-                          Icon(
-                            isCur ? Icons.check_circle : Icons.folder_outlined,
-                            size: 18,
-                            color: isCur
-                                ? AppTheme.successColor
-                                : AppTheme.textMuted,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(p.name,
-                              style: TextStyle(
+          if (!isVeryCompact) ...[
+            const SizedBox(width: 8),
+            const Text(
+              'TesterTrack',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ],
+          if (activeProject != null) ...[
+            SizedBox(width: isCompact ? 8 : 16),
+            // Active Project Selector
+            Flexible(
+              child: PopupMenuButton<Object?>(
+                tooltip: 'Switch Active Firebase Project',
+                onSelected: (val) {
+                  if (val is FirebaseProjectConfig) {
+                    state.selectProject(val);
+                  } else if (val == '__add__)') {
+                    _openAddProject(context);
+                  }
+                },
+                itemBuilder: (ctx) {
+                  return [
+                    ...state.projects.map((p) {
+                      final isCur = p.id == activeProject.id;
+                      return PopupMenuItem<Object?>(
+                        value: p,
+                        child: Row(
+                          children: [
+                            Icon(
+                              isCur
+                                  ? Icons.check_circle
+                                  : Icons.folder_outlined,
+                              size: 18,
+                              color: isCur
+                                  ? AppTheme.successColor
+                                  : AppTheme.textMuted,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                p.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
                                   fontWeight: isCur
                                       ? FontWeight.bold
-                                      : FontWeight.normal)),
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem<Object?>(
+                      value: '__add__',
+                      child: Row(
+                        children: [
+                          Icon(Icons.add,
+                              size: 18, color: AppTheme.primaryColor),
+                          SizedBox(width: 10),
+                          Text('Add Firebase Project...'),
                         ],
                       ),
-                    );
-                  }),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem<Object?>(
-                    value: '__add__',
-                    child: Row(
-                      children: [
-                        Icon(Icons.add, size: 18, color: AppTheme.primaryColor),
-                        SizedBox(width: 10),
-                        Text('Add Firebase Project...'),
-                      ],
                     ),
+                  ];
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.surfaceBorder),
                   ),
-                ];
-              },
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.surfaceBorder),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.cloud_outlined,
-                        size: 16, color: AppTheme.accentColor),
-                    const SizedBox(width: 8),
-                    Text(
-                      activeProject.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 13),
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.arrow_drop_down,
-                        size: 18, color: AppTheme.textMuted),
-                  ],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cloud_outlined,
+                          size: 16, color: AppTheme.accentColor),
+                      const SizedBox(width: 6),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                            maxWidth: isCompact ? 100 : 160),
+                        child: Text(
+                          activeProject.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_drop_down,
+                          size: 16, color: AppTheme.textMuted),
+                    ],
+                  ),
                 ),
               ),
             ),
-          if (state.totalInProgressSessionsCount > 0) ...[
+          ],
+          if (!isCompact && state.totalInProgressSessionsCount > 0) ...[
             const SizedBox(width: 12),
             InkWell(
               onTap: () => _onNavRailDestinationSelected(1),
@@ -334,6 +356,19 @@ class _DashboardShellState extends State<DashboardShell> {
         ],
       ),
       actions: [
+        if (isCompact && state.totalInProgressSessionsCount > 0)
+          IconButton(
+            icon: Badge(
+              label: Text('${state.totalInProgressSessionsCount}'),
+              backgroundColor: AppTheme.warningColor,
+              textColor: Colors.black,
+              child: const Icon(Icons.bolt_rounded,
+                  color: AppTheme.warningColor),
+            ),
+            tooltip:
+                '${state.totalInProgressSessionsCount} in-progress sessions',
+            onPressed: () => _onNavRailDestinationSelected(1),
+          ),
         // Allowlist Guide Helper Button
         IconButton(
           icon: const Icon(Icons.shield_outlined, size: 20),

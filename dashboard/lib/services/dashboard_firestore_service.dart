@@ -45,41 +45,35 @@ class DashboardFirestoreService {
         .map((doc) => TesterViewModel.fromMap(doc.id, doc.data()))
         .toList();
 
-    // Query in-progress sessions for each tester to calculate live counts
+    final nowUtc = DateTime.now().toUtc();
+    final nowLocal = DateTime.now();
+    final todayUtcStr =
+        '${nowUtc.year.toString().padLeft(4, '0')}-${nowUtc.month.toString().padLeft(2, '0')}-${nowUtc.day.toString().padLeft(2, '0')}';
+    final todayLocalStr =
+        '${nowLocal.year.toString().padLeft(4, '0')}-${nowLocal.month.toString().padLeft(2, '0')}-${nowLocal.day.toString().padLeft(2, '0')}';
+    final todayDates = {todayUtcStr, todayLocalStr}.toList();
+    final startOfTodayUtc = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+    final startOfTodayLocal =
+        DateTime(nowLocal.year, nowLocal.month, nowLocal.day);
+
+    // Query in-progress & today sessions for each tester to calculate live and daily metrics
     // (Uses direct subcollection queries to avoid collectionGroup index/rules restrictions)
     final enrichedTesters = await Future.wait(
-      testers.map((t) async {
-        try {
-          final inProgressSnap = await firestore
-              .collection('testers')
-              .doc(t.testerId)
-              .collection('sessions')
-              .where('isFinalized', isEqualTo: false)
-              .get();
-
-          final count = inProgressSnap.docs.length;
-          var dur = 0;
-          for (final doc in inProgressSnap.docs) {
-            dur += (doc.data()['durationSeconds'] as num?)?.toInt() ?? 0;
-          }
-
-          if (count > 0 || dur > 0) {
-            return t.copyWith(
-              inProgressSessionCount: count,
-              inProgressUsageSeconds: dur,
-            );
-          }
-          return t;
-        } catch (_) {
-          return t;
-        }
-      }),
+      testers.map((t) => _enrichTester(
+            firestore,
+            t,
+            todayDates,
+            startOfTodayUtc,
+            startOfTodayLocal,
+            todayUtcStr,
+            todayLocalStr,
+          )),
     );
 
     return enrichedTesters;
   }
 
-  /// Fetches a single tester document with in-progress metrics.
+  /// Fetches a single tester document with in-progress and today's metrics.
   Future<TesterViewModel?> fetchTester(
     FirebaseProjectConfig config,
     String testerId,
@@ -89,26 +83,114 @@ class DashboardFirestoreService {
     if (!doc.exists || doc.data() == null) return null;
     final baseTester = TesterViewModel.fromMap(doc.id, doc.data()!);
 
+    final nowUtc = DateTime.now().toUtc();
+    final nowLocal = DateTime.now();
+    final todayUtcStr =
+        '${nowUtc.year.toString().padLeft(4, '0')}-${nowUtc.month.toString().padLeft(2, '0')}-${nowUtc.day.toString().padLeft(2, '0')}';
+    final todayLocalStr =
+        '${nowLocal.year.toString().padLeft(4, '0')}-${nowLocal.month.toString().padLeft(2, '0')}-${nowLocal.day.toString().padLeft(2, '0')}';
+    final todayDates = {todayUtcStr, todayLocalStr}.toList();
+    final startOfTodayUtc = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+    final startOfTodayLocal =
+        DateTime(nowLocal.year, nowLocal.month, nowLocal.day);
+
+    return await _enrichTester(
+      firestore,
+      baseTester,
+      todayDates,
+      startOfTodayUtc,
+      startOfTodayLocal,
+      todayUtcStr,
+      todayLocalStr,
+    );
+  }
+
+  /// Helper to calculate live in-progress and daily usage metrics for a tester.
+  Future<TesterViewModel> _enrichTester(
+    FirebaseFirestore firestore,
+    TesterViewModel t,
+    List<String> todayDates,
+    DateTime startOfTodayUtc,
+    DateTime startOfTodayLocal,
+    String todayUtcStr,
+    String todayLocalStr,
+  ) async {
     try {
-      final inProgressSnap = await firestore
+      final inProgressFuture = firestore
           .collection('testers')
-          .doc(testerId)
+          .doc(t.testerId)
           .collection('sessions')
           .where('isFinalized', isEqualTo: false)
           .get();
 
-      final inProgressCount = inProgressSnap.docs.length;
-      var inProgressDur = 0;
-      for (final sDoc in inProgressSnap.docs) {
-        inProgressDur += (sDoc.data()['durationSeconds'] as num?)?.toInt() ?? 0;
+      final todayFuture = firestore
+          .collection('testers')
+          .doc(t.testerId)
+          .collection('sessions')
+          .where('activeDate', whereIn: todayDates)
+          .get();
+
+      final results = await Future.wait([inProgressFuture, todayFuture]);
+      final inProgressSnap = results[0];
+      final todaySnap = results[1];
+
+      final Map<String, Map<String, dynamic>> todayDocs = {};
+      for (final doc in todaySnap.docs) {
+        todayDocs[doc.id] = doc.data();
       }
 
-      return baseTester.copyWith(
+      for (final doc in inProgressSnap.docs) {
+        final data = doc.data();
+        final activeDate = data['activeDate'] as String? ?? '';
+        var isToday = todayDates.contains(activeDate);
+        if (!isToday && data['startedAt'] != null) {
+          try {
+            final dynamic rawStarted = data['startedAt'];
+            final started = rawStarted is String
+                ? DateTime.tryParse(rawStarted)?.toUtc()
+                : (rawStarted?.toDate() as DateTime?)?.toUtc();
+            if (started != null &&
+                (started.isAfter(startOfTodayUtc) ||
+                    started.isAtSameMomentAs(startOfTodayUtc))) {
+              isToday = true;
+            }
+          } catch (_) {}
+        }
+        if (isToday) {
+          todayDocs[doc.id] = data;
+        }
+      }
+
+      final inProgressCount = inProgressSnap.docs.length;
+      var inProgressDur = 0;
+      for (final doc in inProgressSnap.docs) {
+        inProgressDur += (doc.data()['durationSeconds'] as num?)?.toInt() ?? 0;
+      }
+
+      final todayCount = todayDocs.length;
+      var todayDur = 0;
+      for (final data in todayDocs.values) {
+        todayDur += (data['durationSeconds'] as num?)?.toInt() ?? 0;
+      }
+
+      final hasLastSeenToday = t.lastSeen.isAfter(startOfTodayLocal) ||
+          t.lastSeen.toUtc().isAfter(startOfTodayUtc);
+      final hasRecentDateToday = t.recentActiveDates.contains(todayUtcStr) ||
+          t.recentActiveDates.contains(todayLocalStr);
+      final isUsedToday = todayCount > 0 ||
+          todayDur > 0 ||
+          hasRecentDateToday ||
+          hasLastSeenToday;
+
+      return t.copyWith(
         inProgressSessionCount: inProgressCount,
         inProgressUsageSeconds: inProgressDur,
+        todaySessionsCount: todayCount,
+        todayUsageSeconds: todayDur,
+        isUsedToday: isUsedToday,
       );
     } catch (_) {
-      return baseTester;
+      return t;
     }
   }
 

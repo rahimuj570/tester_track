@@ -76,8 +76,11 @@ class ProjectsScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              spacing: 16,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              alignment: WrapAlignment.spaceBetween,
               children: [
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -174,7 +177,10 @@ class ProjectsScreen extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
+                              Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 10,
+                                runSpacing: 4,
                                 children: [
                                   Text(
                                     p.name,
@@ -183,8 +189,7 @@ class ProjectsScreen extends StatelessWidget {
                                       fontSize: 15,
                                     ),
                                   ),
-                                  if (isActive) ...[
-                                    const SizedBox(width: 10),
+                                  if (isActive)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 8, vertical: 2),
@@ -202,7 +207,6 @@ class ProjectsScreen extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-                                  ],
                                 ],
                               ),
                               const SizedBox(height: 4),

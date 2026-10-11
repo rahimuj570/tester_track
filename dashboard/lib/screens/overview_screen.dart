@@ -152,13 +152,20 @@ class OverviewScreen extends StatelessWidget {
                       ? 2
                       : 1;
 
+              const targetCardHeight = 120.0;
+              final totalSpacing = (crossAxisCount - 1) * 16.0;
+              final cardWidth =
+                  (constraints.maxWidth - totalSpacing) / crossAxisCount;
+              final childAspectRatio =
+                  (cardWidth / targetCardHeight).clamp(1.1, 4.0);
+
               return GridView.count(
                 crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.8,
+                childAspectRatio: childAspectRatio,
                 children: [
                   StatCard(
                     title: 'Total Testers',

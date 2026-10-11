@@ -231,27 +231,30 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Global Tracking Kill-Switch',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Global Tracking Kill-Switch',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Field: enabled (boolean)',
-                              style: TextStyle(
-                                color: AppTheme.textMuted,
-                                fontSize: 12,
-                                fontFamily: 'monospace',
+                              SizedBox(height: 4),
+                              Text(
+                                'Field: enabled (boolean)',
+                                style: TextStyle(
+                                  color: AppTheme.textMuted,
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 12),
                         Switch(
                           value: _enabled,
                           activeThumbColor: AppTheme.successColor,
@@ -305,7 +308,9 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
                       style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
                     ),
                     const SizedBox(height: 16),
-                    Row(
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
                       children: [
                         ElevatedButton.icon(
                           icon: const Icon(Icons.calendar_today_rounded,
@@ -315,14 +320,12 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
                               : 'Set Expiration Date'),
                           onPressed: _pickExpirationDate,
                         ),
-                        if (_expiresAt != null) ...[
-                          const SizedBox(width: 12),
+                        if (_expiresAt != null)
                           OutlinedButton.icon(
                             icon: const Icon(Icons.clear_rounded, size: 16),
                             label: const Text('Clear Expiration'),
                             onPressed: () => setState(() => _expiresAt = null),
                           ),
-                        ],
                       ],
                     ),
                   ],

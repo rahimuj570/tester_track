@@ -17,6 +17,9 @@ class TesterViewModel {
   final List<String> recentActiveDates;
   final int inProgressSessionCount;
   final int inProgressUsageSeconds;
+  final bool isUsedToday;
+  final int todayUsageSeconds;
+  final int todaySessionsCount;
 
   const TesterViewModel({
     required this.testerId,
@@ -33,6 +36,9 @@ class TesterViewModel {
     required this.recentActiveDates,
     this.inProgressSessionCount = 0,
     this.inProgressUsageSeconds = 0,
+    this.isUsedToday = false,
+    this.todayUsageSeconds = 0,
+    this.todaySessionsCount = 0,
   });
 
   /// Total recorded sessions including finalized and in-progress.
@@ -70,6 +76,21 @@ class TesterViewModel {
     return remMin > 0 ? '${hours}h ${remMin}m' : '${hours}h';
   }
 
+  /// Formatted today's foreground usage time.
+  String get formattedTodayUsageTime {
+    if (todayUsageSeconds <= 0) return '0s';
+    final secs = todayUsageSeconds;
+    if (secs < 60) return '${secs}s';
+    final minutes = secs ~/ 60;
+    if (minutes < 60) {
+      final remSec = secs % 60;
+      return remSec > 0 ? '${minutes}m ${remSec}s' : '${minutes}m';
+    }
+    final hours = minutes ~/ 60;
+    final remMin = minutes % 60;
+    return remMin > 0 ? '${hours}h ${remMin}m' : '${hours}h';
+  }
+
   /// Whether the tester was active within the given days threshold (e.g. 14 days).
   bool isActiveWithin(int days) {
     final threshold = DateTime.now().toUtc().subtract(Duration(days: days));
@@ -88,10 +109,22 @@ class TesterViewModel {
     }
 
     final now = DateTime.now().toUtc();
+    final nowLocal = DateTime.now();
+    final parsedLastSeen = parseDate(map['lastSeen'], now);
     final rawDates = map['recentActiveDates'];
     final parsedDates = rawDates is List
         ? rawDates.map((dynamic e) => e.toString()).toList()
         : <String>[];
+
+    final todayUtcStr =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final todayLocalStr =
+        '${nowLocal.year.toString().padLeft(4, '0')}-${nowLocal.month.toString().padLeft(2, '0')}-${nowLocal.day.toString().padLeft(2, '0')}';
+    final isTodayInitial = parsedDates.contains(todayUtcStr) ||
+        parsedDates.contains(todayLocalStr) ||
+        (parsedLastSeen.toLocal().year == nowLocal.year &&
+            parsedLastSeen.toLocal().month == nowLocal.month &&
+            parsedLastSeen.toLocal().day == nowLocal.day);
 
     return TesterViewModel(
       testerId: map['testerId'] as String? ?? docId,
@@ -101,12 +134,15 @@ class TesterViewModel {
       osVersion: map['osVersion'] as String? ?? 'unknown',
       appVersion: map['appVersion'] as String? ?? 'unknown',
       firstSeen: parseDate(map['firstSeen'], now),
-      lastSeen: parseDate(map['lastSeen'], now),
+      lastSeen: parsedLastSeen,
       sessionCount: (map['sessionCount'] as num?)?.toInt() ?? 0,
       totalUsageSeconds: (map['totalUsageSeconds'] as num?)?.toInt() ?? 0,
       activeDaysCount:
           (map['activeDaysCount'] as num?)?.toInt() ?? parsedDates.length,
       recentActiveDates: parsedDates,
+      isUsedToday: isTodayInitial,
+      todayUsageSeconds: (map['todayUsageSeconds'] as num?)?.toInt() ?? 0,
+      todaySessionsCount: (map['todaySessionsCount'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -125,6 +161,9 @@ class TesterViewModel {
     List<String>? recentActiveDates,
     int? inProgressSessionCount,
     int? inProgressUsageSeconds,
+    bool? isUsedToday,
+    int? todayUsageSeconds,
+    int? todaySessionsCount,
   }) {
     return TesterViewModel(
       testerId: testerId ?? this.testerId,
@@ -143,6 +182,9 @@ class TesterViewModel {
           inProgressSessionCount ?? this.inProgressSessionCount,
       inProgressUsageSeconds:
           inProgressUsageSeconds ?? this.inProgressUsageSeconds,
+      isUsedToday: isUsedToday ?? this.isUsedToday,
+      todayUsageSeconds: todayUsageSeconds ?? this.todayUsageSeconds,
+      todaySessionsCount: todaySessionsCount ?? this.todaySessionsCount,
     );
   }
 }

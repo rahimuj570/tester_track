@@ -62,6 +62,15 @@ class DashboardState extends ChangeNotifier {
   int get activeTesters7DaysCount =>
       _testers.where((t) => t.isActiveWithin(7)).length;
 
+  int get activeTestersTodayCount =>
+      _testers.where((t) => t.isUsedToday).length;
+
+  int get totalTodayUsageSeconds =>
+      _testers.fold<int>(0, (sum, t) => sum + t.todayUsageSeconds);
+
+  int get totalTodaySessionsCount =>
+      _testers.fold<int>(0, (sum, t) => sum + t.todaySessionsCount);
+
   int get totalSessionsCount =>
       _testers.fold<int>(0, (sum, t) => sum + t.sessionCount);
 
@@ -99,6 +108,9 @@ class DashboardState extends ChangeNotifier {
 
   String get formattedInProgressUsage =>
       _formatSeconds(totalInProgressUsageSeconds);
+
+  String get formattedTotalTodayUsage =>
+      _formatSeconds(totalTodayUsageSeconds);
 
   /// Initializes the dashboard state by loading saved projects.
   Future<void> init() async {

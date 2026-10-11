@@ -27,6 +27,16 @@ void main() {
       expect(testerActive.isActiveWithin(14), isTrue);
       expect(testerActive.isActiveWithin(1), isFalse);
 
+      final testerToday = testerActive.copyWith(
+        isUsedToday: true,
+        todayUsageSeconds: 735, // 12m 15s
+        todaySessionsCount: 2,
+      );
+      expect(testerToday.isUsedToday, isTrue);
+      expect(testerToday.todayUsageSeconds, equals(735));
+      expect(testerToday.todaySessionsCount, equals(2));
+      expect(testerToday.formattedTodayUsageTime, equals('12m 15s'));
+
       final testerShort = TesterViewModel(
         testerId: 'T002',
         authUid: 'uid_2',
@@ -43,6 +53,8 @@ void main() {
       );
 
       expect(testerShort.formattedUsageTime, equals('45s'));
+      expect(testerShort.formattedTodayUsageTime, equals('0s'));
+      expect(testerShort.isUsedToday, isFalse);
       expect(testerShort.isActiveWithin(14), isFalse);
     });
 

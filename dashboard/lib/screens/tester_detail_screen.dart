@@ -6,7 +6,7 @@ import '../state/dashboard_state.dart';
 import '../theme/app_theme.dart';
 
 /// Detailed view for an individual tester and their recorded sessions history.
-class TesterDetailScreen extends StatelessWidget {
+class TesterDetailScreen extends StatefulWidget {
   final DashboardState state;
   final TesterViewModel tester;
   final VoidCallback onBack;
@@ -17,6 +17,19 @@ class TesterDetailScreen extends StatelessWidget {
     required this.tester,
     required this.onBack,
   });
+
+  @override
+  State<TesterDetailScreen> createState() => _TesterDetailScreenState();
+}
+
+class _TesterDetailScreenState extends State<TesterDetailScreen> {
+  final ScrollController _horizontalScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalScrollController.dispose();
+    super.dispose();
+  }
 
   String _formatUsageSeconds(int totalSec) {
     if (totalSec < 60) return '${totalSec}s';
@@ -53,7 +66,7 @@ class TesterDetailScreen extends StatelessWidget {
     );
 
     if (confirm == true) {
-      final ok = await state.finalizeSession(session);
+      final ok = await widget.state.finalizeSession(session);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -76,7 +89,7 @@ class TesterDetailScreen extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Finalize In-Progress Sessions'),
         content: Text(
-          'Are you sure you want to finalize all $count in-progress sessions for ${tester.testerId} and update cumulative totals?',
+          'Are you sure you want to finalize all $count in-progress sessions for ${widget.tester.testerId} and update cumulative totals?',
         ),
         actions: [
           TextButton(
@@ -92,7 +105,7 @@ class TesterDetailScreen extends StatelessWidget {
     );
 
     if (confirm == true) {
-      final ok = await state.finalizeAllStaleSessions();
+      final ok = await widget.state.finalizeAllStaleSessions();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -111,6 +124,9 @@ class TesterDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = widget.state;
+    final tester = widget.tester;
+    final onBack = widget.onBack;
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
     final sessions = state.selectedTesterSessions;
 
@@ -140,7 +156,10 @@ class TesterDetailScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
                       children: [
                         Text(
                           tester.testerId,
@@ -150,7 +169,6 @@ class TesterDetailScreen extends StatelessWidget {
                             fontFamily: 'monospace',
                           ),
                         ),
-                        const SizedBox(width: 12),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
@@ -168,6 +186,83 @@ class TesterDetailScreen extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (inProgressCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppTheme.warningColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: AppTheme.warningColor
+                                      .withValues(alpha: 0.4)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.circle,
+                                    size: 7, color: AppTheme.warningColor),
+                                SizedBox(width: 5),
+                                Text(
+                                  'ACTIVE NOW',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.warningColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (tester.isUsedToday)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppTheme.successColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: AppTheme.successColor
+                                      .withValues(alpha: 0.4)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.circle,
+                                    size: 7, color: AppTheme.successColor),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'ACTIVE TODAY (${tester.formattedTodayUsageTime})',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.successColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.1)),
+                            ),
+                            child: const Text(
+                              'NOT ACTIVE TODAY',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textMuted,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                     Text(
@@ -192,15 +287,28 @@ class TesterDetailScreen extends StatelessWidget {
           // Tester Metadata Cards Row
           LayoutBuilder(
             builder: (context, constraints) {
-              final isWide = constraints.maxWidth > 700;
+              final crossAxisCount = constraints.maxWidth > 1050
+                  ? 5
+                  : constraints.maxWidth > 700
+                      ? 3
+                      : constraints.maxWidth > 480
+                          ? 2
+                          : 1;
+
+              const targetCardHeight = 92.0;
+              final totalSpacing = (crossAxisCount - 1) * 12.0;
+              final cardWidth =
+                  (constraints.maxWidth - totalSpacing) / crossAxisCount;
+              final childAspectRatio =
+                  (cardWidth / targetCardHeight).clamp(1.1, 4.0);
 
               return GridView.count(
-                crossAxisCount: isWide ? 4 : 2,
+                crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: isWide ? 2.2 : 1.8,
+                childAspectRatio: childAspectRatio,
                 children: [
                   _DetailCard(
                     title: 'Device & Model',
@@ -214,6 +322,18 @@ class TesterDetailScreen extends StatelessWidget {
                     subtitle:
                         'First seen: ${dateFormat.format(tester.firstSeen.toLocal())}',
                     icon: Icons.apps_rounded,
+                  ),
+                  _DetailCard(
+                    title: "Today's Usage",
+                    value: tester.isUsedToday
+                        ? (tester.todayUsageSeconds > 0
+                            ? tester.formattedTodayUsageTime
+                            : '< 1m')
+                        : 'No Activity',
+                    subtitle: tester.isUsedToday
+                        ? '${tester.todaySessionsCount} session(s) today'
+                        : 'Inactive today',
+                    icon: Icons.today_rounded,
                   ),
                   _DetailCard(
                     title: 'Total Sessions',
@@ -306,11 +426,20 @@ class TesterDetailScreen extends StatelessWidget {
                       ),
                     ),
                   ] else ...[
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        headingRowColor:
-                            WidgetStateProperty.all(const Color(0xFF0F172A)),
+                    Scrollbar(
+                      controller: _horizontalScrollController,
+                      thumbVisibility: true,
+                      trackVisibility: true,
+                      thickness: 10.0,
+                      radius: const Radius.circular(5),
+                      child: SingleChildScrollView(
+                        controller: _horizontalScrollController,
+                        scrollDirection: Axis.horizontal,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 14.0),
+                          child: DataTable(
+                            headingRowColor: WidgetStateProperty.all(
+                                const Color(0xFF0F172A)),
                         columns: const [
                           DataColumn(label: Text('Session ID')),
                           DataColumn(label: Text('Status')),
@@ -410,8 +539,10 @@ class TesterDetailScreen extends StatelessWidget {
                         }).toList(),
                       ),
                     ),
-                  ],
-                ],
+                  ),
+                ),
+              ],
+            ],
               ),
             ),
           ),
@@ -439,34 +570,47 @@ class _DetailCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       color: const Color(0xFF0F172A),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(
               children: [
                 Icon(icon, size: 14, color: AppTheme.textMuted),
                 const SizedBox(width: 6),
-                Text(
-                  title,
-                  style:
-                      const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: AppTheme.textMuted, fontSize: 11),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              overflow: TextOverflow.ellipsis,
+            const SizedBox(height: 2),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ),
             ),
             const SizedBox(height: 2),
             Text(
               subtitle,
-              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
             ),
           ],
         ),

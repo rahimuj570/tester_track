@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'screens/dashboard_shell.dart';
 import 'state/dashboard_state.dart';
@@ -17,6 +18,15 @@ class TesterTrackDashboardApp extends StatelessWidget {
           title: 'TesterTrack Dashboard',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.darkTheme,
+          scrollBehavior: const MaterialScrollBehavior().copyWith(
+            dragDevices: {
+              PointerDeviceKind.mouse,
+              PointerDeviceKind.touch,
+              PointerDeviceKind.stylus,
+              PointerDeviceKind.trackpad,
+              PointerDeviceKind.unknown,
+            },
+          ),
           home: DashboardShell(state: state),
         );
       },
