@@ -1,0 +1,11 @@
+# Files and directories to exclude from the pub.dev published package
+build/
+.dart_tool/
+dashboard/
+scratch/
+test_rules/
+.idea/
+.vscode/
+firebase.json
+*.log
+

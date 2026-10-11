@@ -1,4 +1,12 @@
+<p align="center">
+  <img src="assets/images/logo_wordmark.png" alt="TesterTrack — Know who is actually testing." width="480">
+</p>
+
 # TesterTrack — Developer Dashboard (Flutter Web)
+
+<p align="center">
+  <img src="assets/images/dashboard_preview.png" alt="TesterTrack Web Dashboard" width="100%">
+</p>
 
 A lightweight, developer-owned Flutter Web application for monitoring tester engagement, tracking closed-testing progress (e.g. Google Play 14-day / 20-tester requirements), and remotely managing tracking configuration directly on each developer's secondary Firebase project.
 
@@ -90,6 +98,12 @@ The dashboard includes a dedicated visual identity system:
 * **Tagline**: *"Know who is actually testing."*
 * **Primary Palette**: Deep Navy (`#0B132B`, `#0F172A`)
 * **Accent Palette**: Vibrant Mint & Teal (`#00F5D4`, `#10B981`)
+
+<p align="center">
+  <img src="assets/images/logo.png" alt="TesterTrack Logo Emblem" width="96">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/images/logo_wordmark.png" alt="TesterTrack Wordmark" width="360">
+</p>
 
 ### Asset Locations:
 * `web/favicon.png`: 64x64 crisp PWA & browser favicon

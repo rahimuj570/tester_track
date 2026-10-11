@@ -1,9 +1,13 @@
-# 🚀 TesterTrack
+<p align="center">
+  <img src="assets/images/logo_wordmark.png" alt="TesterTrack — Know who is actually testing." width="520">
+</p>
 
-[![pub package](https://img.shields.io/badge/pub-v0.0.1-blue.svg)](https://pub.dev/packages/tester_track)
-[![Flutter Platform](https://img.shields.io/badge/platform-flutter%20%7C%20android%20%7C%20ios-blue)](https://flutter.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Firebase Powered](https://img.shields.io/badge/firebase-firestore%20%26%20auth-orange.svg)](https://firebase.google.com/)
+<p align="center">
+  <a href="https://pub.dev/packages/tester_track"><img src="https://img.shields.io/badge/pub-v0.0.1-blue.svg" alt="pub package"></a>
+  <a href="https://flutter.dev"><img src="https://img.shields.io/badge/platform-flutter%20%7C%20android%20%7C%20ios-blue" alt="Flutter Platform"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://firebase.google.com/"><img src="https://img.shields.io/badge/firebase-firestore%20%26%20auth-orange.svg" alt="Firebase Powered"></a>
+</p>
 
 A lightweight, developer-owned Flutter package for monitoring tester engagement during **Google Play Closed Testing (14-day / 20-tester requirement)** without expensive third-party SaaS tools or backend servers.
 
@@ -224,6 +228,12 @@ await TesterTrack.instance.resetTesterId();
 ---
 
 ## 🖥️ Companion Web Dashboard
+
+<p align="center">
+  <img src="assets/images/dashboard_preview.png" alt="TesterTrack Web Dashboard Preview" width="100%">
+</p>
+
+> 🌐 **Live Web Dashboard**: [https://tester-track.pages.dev/](https://tester-track.pages.dev/)
 
 TesterTrack includes an open-source, responsive Flutter Web Dashboard located in the [`dashboard/`](dashboard/) folder.
 
