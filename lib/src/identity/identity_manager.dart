@@ -10,20 +10,25 @@ class IdentityManager {
   final LocalStorage localStorage;
   final TrackerErrorHandler errorHandler;
 
-  static final RegExp _validTesterIdRegex = RegExp(r'^[a-zA-Z0-9_-]{1,64}$');
+  static final RegExp _validTesterIdRegex =
+      RegExp(r'^[a-zA-Z0-9._%+@\-]{1,128}$');
 
   IdentityManager({
     required this.localStorage,
     required this.errorHandler,
   });
 
-  /// Validates an explicit developer-provided tester ID.
+  /// Validates an explicit developer-provided tester ID (such as an email or alphanumeric ID).
   ///
-  /// Returns `true` if the ID is 1-64 characters long and contains only
-  /// alphanumeric characters, underscores (`_`), or hyphens (`-`).
+  /// Returns `true` if the ID is 1-128 characters long, contains only safe
+  /// characters (alphanumeric, underscores, hyphens, periods, plus, at-sign),
+  /// and is not a reserved Firestore segment (`.` or `..` or starting with `__`).
   static bool isValidTesterId(String? testerId) {
     if (testerId == null) return false;
     final trimmed = testerId.trim();
+    if (trimmed.isEmpty || trimmed == '.' || trimmed == '..' || trimmed.startsWith('__')) {
+      return false;
+    }
     return _validTesterIdRegex.hasMatch(trimmed);
   }
 
@@ -44,7 +49,7 @@ class IdentityManager {
               return trimmed;
             } else {
               errorHandler.log(
-                'Invalid explicit tester ID "$explicitTesterId". Must match ^[a-zA-Z0-9_-]{1,64}\$. '
+                'Invalid explicit tester ID "$explicitTesterId". Must match safe identifier pattern (alphanumeric, _, -, ., @, + up to 128 chars). '
                 'Falling back to persistent anonymous installation ID.',
               );
             }

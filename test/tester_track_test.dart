@@ -31,5 +31,13 @@ void main() {
       expect(() => tracker.stopTracking(), returnsNormally);
       expect(tracker.isTracking, isFalse);
     });
+
+    test('setTesterId and resetTesterId do not throw when not initialized', () async {
+      final tracker = TesterTrack.instance;
+      final result1 = await tracker.setTesterId('alex@example.com');
+      expect(result1, isFalse);
+      final result2 = await tracker.resetTesterId();
+      expect(result2, isFalse);
+    });
   });
 }

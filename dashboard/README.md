@@ -42,6 +42,67 @@ flutter run -d chrome
 
 ---
 
+## ☁️ Cloudflare Pages Deployment Guide
+
+The TesterTrack dashboard is a pure static client-side single-page application (SPA). It deploys natively to Cloudflare Pages with zero server infrastructure.
+
+### Build & Deployment Settings
+
+When setting up your project in Cloudflare Pages:
+
+| Setting | Value (if Repository Root is Project Root) | Value (if Root Directory is `dashboard/`) |
+|---|---|---|
+| **Framework preset** | `None` | `None` |
+| **Build command** | `cd dashboard && flutter pub get && flutter build web --release` | `flutter pub get && flutter build web --release` |
+| **Build output directory** | `dashboard/build/web` | `build/web` |
+| **Root directory** | `/` (default) | `dashboard` |
+
+> ⚠️ **Important**: Ensure your deployment serves the **build output directory** (`dashboard/build/web`), **never** the source directory!
+
+### SPA Routing & Page Refresh on Nested Routes
+Flutter Web uses HTML5 client-side routing. To prevent 404 errors when developers refresh the page on deep URLs (like `/testers` or `/remote-config`), the dashboard includes a pre-configured [`web/_redirects`](web/_redirects) file:
+
+```text
+/*    /index.html   200
+```
+Cloudflare Pages reads this file automatically and routes all paths to `/index.html` with a `200 OK` status, allowing the Flutter router to handle navigation without broken pages.
+
+### Subpath Hosting Support
+If you plan to host the dashboard on a subpath (e.g. `https://example.com/tester-track/`):
+```bash
+flutter build web --release --base-href /tester-track/
+```
+
+### Authorizing Cloudflare Pages in Firebase
+Once deployed to Cloudflare Pages:
+1. Copy your deployment domain (e.g. `your-project.pages.dev` or custom domain).
+2. Open **Firebase Console** > **Authentication** > **Settings** > **Authorized domains**.
+3. Click **Add domain** and paste your domain (e.g. `your-project.pages.dev`).
+*(This is required for Firebase Google Sign-In and popup auth to work on Cloudflare).*
+
+---
+
+## 🎨 Brand Assets & Visual Identity
+
+The dashboard includes a dedicated visual identity system:
+
+* **Name**: TesterTrack
+* **Tagline**: *"Know who is actually testing."*
+* **Primary Palette**: Deep Navy (`#0B132B`, `#0F172A`)
+* **Accent Palette**: Vibrant Mint & Teal (`#00F5D4`, `#10B981`)
+
+### Asset Locations:
+* `web/favicon.png`: 64x64 crisp PWA & browser favicon
+* `web/icons/Icon-192.png`: 192x192 PWA application icon
+* `web/icons/Icon-512.png`: 512x512 high-resolution PWA application icon
+* `web/icons/Icon-maskable-*.png`: Android/Chrome adaptive maskable icon with 18% safe padding
+* `web/assets/logo.svg`: Pure vector SVG telemetry emblem
+* `web/assets/logo_wordmark.svg`: Vector SVG wordmark with name and tagline
+* `assets/images/logo.png`: Transparent background high-res Flutter asset
+* `assets/images/logo_wordmark.png`: Transparent background wordmark with tagline
+
+---
+
 ## Firebase Setup Guide
 
 ### Step 1: Register a Web App in Firebase Console

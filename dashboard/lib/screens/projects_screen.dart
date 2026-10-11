@@ -259,10 +259,12 @@ class ProjectsScreen extends StatelessWidget {
                         Icon(Icons.shield_rounded,
                             color: AppTheme.primaryColor, size: 20),
                         SizedBox(width: 10),
-                        Text(
-                          'Firestore Security Rules & Owner Authorization',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15),
+                        Expanded(
+                          child: Text(
+                            'Firestore Security Rules & Owner Authorization',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
                         ),
                       ],
                     ),

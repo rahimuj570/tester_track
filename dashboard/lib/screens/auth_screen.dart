@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/project_config.dart';
 import '../state/dashboard_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/brand_logo.dart';
 import '../widgets/project_form_dialog.dart';
 import '../widgets/uid_guide_dialog.dart';
 
@@ -56,45 +57,14 @@ class _AuthScreenState extends State<AuthScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // App Logo & Title
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color:
-                                AppTheme.primaryColor.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.track_changes_rounded,
-                            color: AppTheme.primaryColor,
-                            size: 32,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'TesterTrack',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              'Developer Dashboard',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textMuted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                    // App Brand Logo & Wordmark
+                    const Center(
+                      child: BrandWordmark(
+                        logoSize: 48,
+                        titleSize: 24,
+                        taglineSize: 13,
+                        showTagline: true,
+                      ),
                     ),
                     const SizedBox(height: 28),
 

@@ -1,11 +1,42 @@
 {
-  "name": "TesterTrack Dashboard",
+  "name": "TesterTrack — Know who is actually testing",
   "short_name": "TesterTrack",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#6366f1",
-  "description": "Developer-owned dashboard for tracking tester engagement and sessions.",
-  "orientation": "portrait-primary",
-  "prefer_related_applications": false
+  "background_color": "#0B132B",
+  "theme_color": "#0B132B",
+  "description": "Developer-owned dashboard for tracking tester engagement and sessions during Google Play closed testing.",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/Icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/Icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
 }

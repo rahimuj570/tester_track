@@ -26,6 +26,7 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
   @override
   void initState() {
     super.initState();
+    _minVersionController = TextEditingController();
     _initValues();
   }
 
@@ -33,8 +34,7 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
     final cfg = widget.state.remoteConfig ?? RemoteConfigFormModel.empty;
     _enabled = cfg.enabled;
     _expiresAt = cfg.expiresAt;
-    _minVersionController =
-        TextEditingController(text: cfg.minAppVersion ?? '');
+    _minVersionController.text = cfg.minAppVersion ?? '';
     _syncIntervalSeconds = cfg.syncIntervalSeconds ?? 300;
   }
 
@@ -151,8 +151,11 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
               children: [
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,13 +365,15 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        SizedBox(
-                          width: 220,
-                          child: TextField(
-                            controller: _minVersionController,
-                            decoration: const InputDecoration(
-                              labelText: 'Min Version (e.g. 1.5.0)',
-                              hintText: '1.0.0',
+                        Expanded(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 240),
+                            child: TextField(
+                              controller: _minVersionController,
+                              decoration: const InputDecoration(
+                                labelText: 'Min Version (e.g. 1.5.0)',
+                                hintText: '1.0.0',
+                              ),
                             ),
                           ),
                         ),
@@ -392,8 +397,11 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 12,
+                      runSpacing: 8,
                       children: [
                         const Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -413,10 +421,22 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
                             ),
                           ],
                         ),
-                        Text(
-                          '${_syncIntervalSeconds ?? 300} seconds (${((_syncIntervalSeconds ?? 300) / 60).toStringAsFixed(1)} min)',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor
+                                .withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_syncIntervalSeconds ?? 300}s (${((_syncIntervalSeconds ?? 300) / 60).toStringAsFixed(1)} min)',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF00F5D4),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -444,7 +464,10 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
             const SizedBox(height: 24),
 
             // Save Action
-            Row(
+            Wrap(
+              spacing: 16,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 ElevatedButton.icon(
                   icon: _isSaving
@@ -460,7 +483,6 @@ class _RemoteConfigScreenState extends State<RemoteConfigScreen> {
                       : 'Publish Remote Configuration'),
                   onPressed: _isSaving ? null : _saveConfig,
                 ),
-                const SizedBox(width: 16),
                 TextButton(
                   onPressed: () => setState(_initValues),
                   child: const Text('Reset Changes'),

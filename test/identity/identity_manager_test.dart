@@ -27,15 +27,20 @@ void main() {
       expect(IdentityManager.isValidTesterId('T001'), isTrue);
       expect(IdentityManager.isValidTesterId('tester_42'), isTrue);
       expect(IdentityManager.isValidTesterId('alpha-beta_123'), isTrue);
-      expect(IdentityManager.isValidTesterId('a' * 64), isTrue);
+      expect(IdentityManager.isValidTesterId('alex.smith@company.com'), isTrue);
+      expect(IdentityManager.isValidTesterId('tester+tag@domain.co.uk'), isTrue);
+      expect(IdentityManager.isValidTesterId('a' * 128), isTrue);
 
       // Invalid
       expect(IdentityManager.isValidTesterId(null), isFalse);
       expect(IdentityManager.isValidTesterId(''), isFalse);
+      expect(IdentityManager.isValidTesterId('.'), isFalse);
+      expect(IdentityManager.isValidTesterId('..'), isFalse);
+      expect(IdentityManager.isValidTesterId('__reserved'), isFalse);
       expect(
           IdentityManager.isValidTesterId('invalid id with spaces'), isFalse);
-      expect(IdentityManager.isValidTesterId('invalid@email.com'), isFalse);
-      expect(IdentityManager.isValidTesterId('a' * 65), isFalse);
+      expect(IdentityManager.isValidTesterId('invalid/slash'), isFalse);
+      expect(IdentityManager.isValidTesterId('a' * 129), isFalse);
     });
 
     test('resolveTesterId uses valid explicit developer-provided ID', () async {

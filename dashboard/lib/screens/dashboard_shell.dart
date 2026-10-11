@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/project_config.dart';
 import '../state/dashboard_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/brand_logo.dart';
 import '../widgets/project_form_dialog.dart';
 import '../widgets/uid_guide_dialog.dart';
 import 'auth_screen.dart';
@@ -201,23 +202,28 @@ class _DashboardShellState extends State<DashboardShell> {
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.track_changes_rounded,
-              color: AppTheme.primaryColor,
-              size: 18,
-            ),
-          ),
+          // Brand Logo & Wordmark
+          const BrandLogo(size: 30),
           if (!isVeryCompact) ...[
-            const SizedBox(width: 8),
-            const Text(
-              'TesterTrack',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            const SizedBox(width: 10),
+            RichText(
+              text: const TextSpan(
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  letterSpacing: -0.2,
+                ),
+                children: [
+                  TextSpan(
+                    text: 'Tester',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  TextSpan(
+                    text: 'Track',
+                    style: TextStyle(color: Color(0xFF00F5D4)),
+                  ),
+                ],
+              ),
             ),
           ],
           if (activeProject != null) ...[
@@ -294,12 +300,11 @@ class _DashboardShellState extends State<DashboardShell> {
                       const Icon(Icons.cloud_outlined,
                           size: 16, color: AppTheme.accentColor),
                       const SizedBox(width: 6),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                            maxWidth: isCompact ? 100 : 160),
+                      Flexible(
                         child: Text(
                           activeProject.name,
                           overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                           style: const TextStyle(
                               fontWeight: FontWeight.w600, fontSize: 13),
                         ),
