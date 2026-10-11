@@ -68,6 +68,11 @@ class TesterTrack {
     return await tracker._errorHandler.runGuarded<bool>(() async {
           tracker._errorHandler.log('Initializing TesterTrack...');
 
+          // Clean up any previous timers/observers if re-initializing
+          tracker._lifecycleObserver?.detach();
+          tracker._remoteConfigService?.dispose();
+          tracker._sessionManager?.dispose();
+
           // 1. Initialize local storage
           tracker._localStorage =
               LocalStorage(errorHandler: tracker._errorHandler);

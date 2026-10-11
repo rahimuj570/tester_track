@@ -1,0 +1,12 @@
+{
+  "name": "tester_track_rules_tests",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test rules.test.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "firebase": "^10.14.1"
+  }
+}

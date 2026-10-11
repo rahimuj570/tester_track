@@ -7,12 +7,11 @@ void main() async {
   // Initialize TesterTrack with secondary Firebase project options.
   // Replace these with your actual secondary Firebase project options.
   const secondaryFirebaseOptions = FirebaseOptions(
-    apiKey: 'AIzaSyExampleFakeApiKeyForTesting12345',
-    appId: '1:1234567890:android:abcdef123456',
-    messagingSenderId: '1234567890',
-    projectId: 'tester-track-demo-project',
-    storageBucket: 'tester-track-demo-project.appspot.com',
-  );
+      apiKey: "AIzaSyBH4RIc8MYlzFgoKVkVfu-jeSyIn_qJz74",
+      projectId: "test-auth-project-7806e",
+      storageBucket: "test-auth-project-7806e.firebasestorage.app",
+      messagingSenderId: "68460167605",
+      appId: "1:68460167605:web:db19ed0e10d0ab7cbc59fc");
 
   // Initialize tracking with an optional explicit tester ID.
   await TesterTrack.initialize(

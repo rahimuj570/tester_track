@@ -7,12 +7,32 @@ class SecurityRulesEvaluator {
 
   SecurityRulesEvaluator({this.auth});
 
+  static const Set<String> developerAllowlist = {
+    'dev_owner_uid_1',
+    'dev_user_123',
+    'dev_uid_google_123',
+    'dev_123',
+    'dev_user_1',
+  };
+
   bool isDeveloper() {
     if (auth == null) return false;
     final token = auth!['token'] as Map<String, dynamic>?;
     final firebase = token?['firebase'] as Map<String, dynamic>?;
     final provider = firebase?['sign_in_provider'] as String?;
-    return provider != null && provider != 'anonymous';
+    final uid = auth!['uid'] as String?;
+    return provider != null &&
+        provider != 'anonymous' &&
+        uid != null &&
+        developerAllowlist.contains(uid);
+  }
+
+  bool isAnonymousTester() {
+    if (auth == null) return false;
+    final token = auth!['token'] as Map<String, dynamic>?;
+    final firebase = token?['firebase'] as Map<String, dynamic>?;
+    final provider = firebase?['sign_in_provider'] as String?;
+    return provider == 'anonymous';
   }
 
   // match /config/global
@@ -24,7 +44,7 @@ class SecurityRulesEvaluator {
     required String testerId,
     required Map<String, dynamic> requestResourceData,
   }) {
-    if (auth == null) return false;
+    if (!isAnonymousTester()) return false;
     final authUid = auth!['uid'];
     return requestResourceData['authUid'] == authUid &&
         requestResourceData['testerId'] == testerId;
@@ -35,7 +55,7 @@ class SecurityRulesEvaluator {
     required Map<String, dynamic> resourceData,
     required Map<String, dynamic> requestResourceData,
   }) {
-    if (auth == null) return false;
+    if (!isAnonymousTester()) return false;
     final authUid = auth!['uid'];
     return resourceData['authUid'] == authUid &&
         requestResourceData['authUid'] == resourceData['authUid'] &&
@@ -60,7 +80,7 @@ class SecurityRulesEvaluator {
     required Map<String, dynamic> requestResourceData,
     Map<String, dynamic>? parentTesterDoc,
   }) {
-    if (auth == null) return false;
+    if (!isAnonymousTester()) return false;
     final authUid = auth!['uid'];
     final matchesAuth = requestResourceData['authUid'] == authUid &&
         requestResourceData['testerId'] == testerId &&
@@ -78,7 +98,7 @@ class SecurityRulesEvaluator {
     required Map<String, dynamic> resourceData,
     required Map<String, dynamic> requestResourceData,
   }) {
-    if (auth == null) return false;
+    if (!isAnonymousTester()) return false;
     final authUid = auth!['uid'];
     return resourceData['authUid'] == authUid &&
         requestResourceData['authUid'] == resourceData['authUid'] &&
@@ -315,9 +335,65 @@ void main() {
       expect(developer.canWriteConfig(), isTrue);
       expect(anonTester1.canWriteConfig(), isFalse);
 
+      // Developer cannot create or update tester or session
+      expect(
+        developer.canCreateTester(
+          testerId: 'T001',
+          requestResourceData: {
+            'testerId': 'T001',
+            'authUid': 'dev_uid_google_123'
+          },
+        ),
+        isFalse,
+      );
+      expect(
+        developer.canUpdateTester(
+          testerId: 'T001',
+          resourceData: testerDoc,
+          requestResourceData: testerDoc,
+        ),
+        isFalse,
+      );
+
       // Developer cannot delete tester or session in MVP
       expect(developer.canDeleteTester(), isFalse);
       expect(developer.canDeleteSession(), isFalse);
+    });
+
+    test('J. Signed-in user NOT on allowlist is denied developer access', () {
+      final nonAllowlistedUser = SecurityRulesEvaluator(
+        auth: {
+          'uid': 'stranger_uid_not_on_list',
+          'token': {
+            'firebase': {'sign_in_provider': 'google.com'}
+          }
+        },
+      );
+
+      final testerDoc = {'testerId': 'T001', 'authUid': 'anon_uid_1'};
+      final sessionDoc = {
+        'testerId': 'T001',
+        'sessionId': 'sess_1',
+        'authUid': 'anon_uid_1'
+      };
+
+      // Non-allowlisted user cannot read others' tester/session docs or write config
+      expect(
+        nonAllowlistedUser.canReadTester(
+          testerId: 'T001',
+          resourceData: testerDoc,
+        ),
+        isFalse,
+      );
+      expect(
+        nonAllowlistedUser.canReadSession(
+          testerId: 'T001',
+          resourceData: sessionDoc,
+        ),
+        isFalse,
+      );
+      expect(nonAllowlistedUser.canWriteConfig(), isFalse);
+      expect(nonAllowlistedUser.canReadConfig(), isTrue);
     });
   });
 }

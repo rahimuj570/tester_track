@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore_platform_interface/cloud_firestore_platform_interface.dart';
+// ignore: implementation_imports
+import 'package:cloud_firestore_platform_interface/src/method_channel/method_channel_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import '../core/constants.dart';
 import '../core/error_handler.dart';
 
@@ -66,6 +70,25 @@ class TrackerFirebaseService {
             );
           }
 
+          // If the host application does not have a default Firebase app initialized,
+          // FlutterFire's FirebaseFirestorePlatform.instanceFor falls back to
+          // FirebaseFirestorePlatform.instance, which lazily calls Firebase.app('[DEFAULT]')
+          // and throws [core/no-app]. We set the platform instance delegate to our named app
+          // to avoid requiring the host app to initialize a default Firebase app.
+          try {
+            Firebase.app();
+          } catch (_) {
+            if (!kIsWeb) {
+              try {
+                // ignore: implementation_imports
+                FirebaseFirestorePlatform.instance =
+                    MethodChannelFirebaseFirestore(app: _app!);
+              } catch (_) {
+                // Ignore if platform interface is already locked or custom mocked.
+              }
+            }
+          }
+
           _auth = FirebaseAuth.instanceFor(app: _app!);
           _firestore = FirebaseFirestore.instanceFor(app: _app!);
 
@@ -92,10 +115,24 @@ class TrackerFirebaseService {
 
       errorHandler
           .log('Signing in anonymously to secondary Firebase project...');
-      final userCredential = await _auth!.signInAnonymously();
-      errorHandler
-          .log('Anonymous sign-in complete. UID: ${userCredential.user?.uid}');
-      return userCredential;
+      try {
+        final userCredential = await _auth!.signInAnonymously();
+        errorHandler
+            .log('Anonymous sign-in complete. UID: ${userCredential.user?.uid}');
+        return userCredential;
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'admin-restricted-operation') {
+          errorHandler.log(
+            'CRITICAL: Anonymous Authentication is disabled in your Firebase project (${_app?.options.projectId}).\n'
+            'To resolve this:\n'
+            '  1. Open Firebase Console (https://console.firebase.google.com)\n'
+            '  2. Select project "${_app?.options.projectId}"\n'
+            '  3. Go to Build > Authentication > Sign-in method\n'
+            '  4. Enable the "Anonymous" provider and click Save.',
+          );
+        }
+        rethrow;
+      }
     }, operationName: 'FirebaseAuth.signInAnonymously', fallbackValue: null);
   }
 

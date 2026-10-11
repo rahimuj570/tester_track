@@ -1,0 +1,5 @@
+package com.example.tester_track_example
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()

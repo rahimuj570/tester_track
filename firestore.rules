@@ -2,36 +2,50 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: Developer is any authenticated user NOT using anonymous authentication
-    function isDeveloper() {
+    // Helper: Developer is an authenticated non-anonymous user who is explicitly on the authorized owner allowlist.
+    // Replace or add your Firebase Auth UID(s) to this list to grant dashboard access.
+    function isAuthorizedDeveloper() {
       return request.auth != null && 
-             request.auth.token.firebase.sign_in_provider != 'anonymous';
+             request.auth.token.firebase.sign_in_provider != 'anonymous' &&
+             request.auth.uid in [
+               // DEVELOPER ALLOWLIST: Add your Firebase Auth UID(s) here
+               'dev_owner_uid_1',
+               'dev_user_123',
+               'dev_123',
+               'dev_user_1'
+             ];
+    }
+
+    // Helper: Tester is an authenticated anonymous user from the mobile/client app
+    function isAnonymousTester() {
+      return request.auth != null && 
+             request.auth.token.firebase.sign_in_provider == 'anonymous';
     }
 
     // Global Remote Configuration
-    // - All authenticated users (anonymous testers + dashboard developer) can read
-    // - Only developer (non-anonymous) can write
+    // - All authenticated users (anonymous testers + authorized developers) can read
+    // - Only authorized developers can write
     match /config/global {
       allow read: if request.auth != null;
-      allow write: if isDeveloper();
+      allow write: if isAuthorizedDeveloper();
     }
 
     // Tester Profiles
     // - Anonymous tester can ONLY create/update/read their own document where authUid matches request.auth.uid
     // - Tester ID and Auth UID are immutable after creation
     // - Deletion is disabled in MVP
-    // - Dashboard developer can read all tester profiles (viewer role)
+    // - Authorized developer can read all tester profiles (viewer role)
     match /testers/{testerId} {
-      allow create: if request.auth != null 
+      allow create: if isAnonymousTester() 
                     && request.resource.data.authUid == request.auth.uid
                     && request.resource.data.testerId == testerId;
 
-      allow update: if request.auth != null 
+      allow update: if isAnonymousTester() 
                     && resource.data.authUid == request.auth.uid
                     && request.resource.data.authUid == resource.data.authUid
                     && request.resource.data.testerId == resource.data.testerId;
 
-      allow read: if isDeveloper() 
+      allow read: if isAuthorizedDeveloper() 
                   || (request.auth != null && resource.data.authUid == request.auth.uid);
 
       allow delete: if false;
@@ -40,21 +54,21 @@ service cloud.firestore {
       // - Anonymous tester can ONLY create/update/read sessions matching their own authUid and testerId
       // - Session identity and ownership are immutable
       // - Deletion is disabled in MVP
-      // - Dashboard developer can read all sessions
+      // - Authorized developer can read all sessions (viewer role)
       match /sessions/{sessionId} {
-        allow create: if request.auth != null 
+        allow create: if isAnonymousTester() 
                       && request.resource.data.authUid == request.auth.uid
                       && request.resource.data.testerId == testerId
                       && request.resource.data.sessionId == sessionId
                       && get(/databases/$(database)/documents/testers/$(testerId)).data.authUid == request.auth.uid;
 
-        allow update: if request.auth != null 
+        allow update: if isAnonymousTester() 
                       && resource.data.authUid == request.auth.uid
                       && request.resource.data.authUid == resource.data.authUid
                       && request.resource.data.testerId == resource.data.testerId
                       && request.resource.data.sessionId == resource.data.sessionId;
 
-        allow read: if isDeveloper() 
+        allow read: if isAuthorizedDeveloper() 
                     || (request.auth != null && resource.data.authUid == request.auth.uid);
 
         allow delete: if false;

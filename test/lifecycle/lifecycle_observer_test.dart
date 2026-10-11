@@ -104,5 +104,25 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 80));
       expect(sessionManager.isTracking, isFalse); // finalized after debounce
     });
+
+    test('multiple consecutive background transitions do not disrupt session',
+        () async {
+      observer.attach();
+
+      // 1. Resumed state starts session
+      observer.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(sessionManager.isTracking, isTrue);
+
+      // 2. Fire inactive -> hidden -> paused
+      observer.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      observer.didChangeAppLifecycleState(AppLifecycleState.hidden);
+      observer.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(sessionManager.isTracking, isTrue);
+
+      // 3. Resume within debounce window
+      observer.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      expect(sessionManager.isTracking, isTrue);
+    });
   });
 }

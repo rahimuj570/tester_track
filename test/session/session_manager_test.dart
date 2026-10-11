@@ -261,5 +261,52 @@ void main() {
       final sessionDoc = await repository.getSession('T001', sessionId);
       expect(sessionDoc!.isFinalized, isTrue);
     });
+
+    test(
+        'consecutive onAppPauseOrInactive calls while backgrounded do not accumulate background time',
+        () async {
+      await sessionManager.startSession();
+      final sessionId = sessionManager.currentSession!.sessionId;
+
+      // Active in foreground for 30ms
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      // 1. App enters inactive (first pause transition)
+      sessionManager.onAppPauseOrInactive();
+      final durationAfterFirstPause =
+          sessionManager.currentSession!.observedDurationSeconds;
+
+      // 2. Spend 40ms in background, then Flutter fires paused / hidden lifecycle state
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      sessionManager.onAppPauseOrInactive();
+
+      // Observed duration MUST NOT have grown during those 40ms in the background
+      expect(sessionManager.currentSession!.observedDurationSeconds,
+          equals(durationAfterFirstPause));
+
+      // 3. Spend another 20ms in background, then Flutter fires detached
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      sessionManager.onAppPauseOrInactive();
+
+      expect(sessionManager.currentSession!.observedDurationSeconds,
+          equals(durationAfterFirstPause));
+
+      await sessionManager.stopTracking();
+      final finalDoc = await repository.getSession('T001', sessionId);
+      expect(finalDoc!.durationSeconds, equals(durationAfterFirstPause));
+    });
+
+    test('dispose cancels all active timers cleanly', () async {
+      await sessionManager.startSession();
+      sessionManager.onAppPauseOrInactive(); // Starts debounce timer
+
+      sessionManager.dispose();
+
+      // Wait past debounce time
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      // Session was not finalized by timer after dispose
+      expect(sessionManager.currentSession, isNotNull);
+    });
   });
 }

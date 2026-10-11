@@ -228,10 +228,13 @@ class SessionManager {
         return;
       }
 
+      final wasInForeground = _isInForeground;
       _isInForeground = false;
 
-      // Accumulate foreground time up to this exact moment
-      _accumulateActiveForegroundTime();
+      // Accumulate foreground time up to this exact moment only if coming from foreground
+      if (wasInForeground) {
+        _accumulateActiveForegroundTime();
+      }
 
       if (_inactivityDebounceTimer != null &&
           _inactivityDebounceTimer!.isActive) {

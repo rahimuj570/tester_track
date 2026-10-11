@@ -114,6 +114,19 @@ Deploy the included `firestore.rules` to your Firebase project:
 
 ---
 
+## Flutter Web Dashboard
+
+A companion Flutter Web application for monitoring testers and managing remote tracking configuration is located in the [`dashboard/`](dashboard/) directory.
+
+- **Zero Central Backend**: Connects directly from the developer's browser to their own Firebase project.
+- **Multi-Project Support**: Manage multiple tracking projects and switch between them locally.
+- **Owner-Allowlist Protected**: Enforces explicit Firebase Auth UID allowlists in Firestore Security Rules.
+- **Isolated Dependencies**: Dashboard dependencies live entirely in `dashboard/pubspec.yaml` and do not bloat the published package.
+
+See [`dashboard/README.md`](dashboard/README.md) for local run instructions and Firebase configuration.
+
+---
+
 ## License
 
 MIT License.

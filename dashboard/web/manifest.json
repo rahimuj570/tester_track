@@ -1,0 +1,11 @@
+{
+  "name": "TesterTrack Dashboard",
+  "short_name": "TesterTrack",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "description": "Developer-owned dashboard for tracking tester engagement and sessions.",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false
+}
