@@ -69,10 +69,18 @@ class FirestoreRepository {
   }) async {
     return await errorHandler.runGuarded<TesterData?>(() async {
       final docRef = _testerDoc(testerId);
-      final docSnap = await docRef.get();
       final nowUtc = DateTime.now().toUtc();
+      DocumentSnapshot<Map<String, dynamic>>? docSnap;
 
-      if (!docSnap.exists || docSnap.data() == null) {
+      try {
+        docSnap = await docRef.get();
+      } catch (e) {
+        errorHandler.log(
+          'Pre-check read on testers/$testerId threw: $e. Proceeding with initial document creation.',
+        );
+      }
+
+      if (docSnap == null || !docSnap.exists || docSnap.data() == null) {
         // Create new tester document
         final newTester = TesterData(
           testerId: testerId,
@@ -151,11 +159,16 @@ class FirestoreRepository {
   Future<bool> createSession(SessionData session) async {
     return await errorHandler.runGuarded<bool>(() async {
           final docRef = _sessionDoc(session.testerId, session.sessionId);
-          final docSnap = await docRef.get();
-          if (docSnap.exists) {
+          try {
+            final docSnap = await docRef.get();
+            if (docSnap.exists) {
+              errorHandler.log(
+                  'Session ${session.sessionId} already exists in Firestore.');
+              return true;
+            }
+          } catch (e) {
             errorHandler.log(
-                'Session ${session.sessionId} already exists in Firestore.');
-            return true;
+                'Pre-check read for session ${session.sessionId} threw: $e. Proceeding with creation.');
           }
 
           final data = session.toMap();

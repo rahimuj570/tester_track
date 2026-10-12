@@ -110,6 +110,9 @@ class TrackerFirebaseService {
       if (currentUser != null) {
         errorHandler.log(
             'Reusing existing anonymous auth session (${currentUser.uid})');
+        try {
+          await currentUser.getIdToken();
+        } catch (_) {}
         return null;
       }
 
@@ -119,6 +122,9 @@ class TrackerFirebaseService {
         final userCredential = await _auth!.signInAnonymously();
         errorHandler
             .log('Anonymous sign-in complete. UID: ${userCredential.user?.uid}');
+        try {
+          await userCredential.user?.getIdToken();
+        } catch (_) {}
         return userCredential;
       } on FirebaseAuthException catch (e) {
         if (e.code == 'admin-restricted-operation') {

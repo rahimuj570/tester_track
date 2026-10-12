@@ -46,7 +46,7 @@ service cloud.firestore {
                     && request.resource.data.testerId == resource.data.testerId;
 
       allow read: if isAuthorizedDeveloper() 
-                  || (request.auth != null && resource.data.authUid == request.auth.uid);
+                  || (request.auth != null && (resource == null || resource.data.authUid == request.auth.uid));
 
       allow delete: if false;
 
@@ -69,7 +69,7 @@ service cloud.firestore {
                       && request.resource.data.sessionId == resource.data.sessionId;
 
         allow read: if isAuthorizedDeveloper() 
-                    || (request.auth != null && resource.data.authUid == request.auth.uid);
+                    || (request.auth != null && (resource == null || resource.data.authUid == request.auth.uid));
 
         allow delete: if false;
       }

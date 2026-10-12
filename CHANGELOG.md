@@ -2,6 +2,13 @@
 
 All notable changes to `tester_track` will be documented in this file.
 
+## 0.0.2
+
+* Harden initial tester profile synchronization and session creation against non-existent document pre-check read errors.
+* Ensure immediate Auth token retrieval on anonymous sign-in and session reuse to prevent first-launch race conditions.
+* Update Firestore security rules to safely allow non-existent document pre-check reads (`resource == null`).
+* Add unit tests verifying fresh launch tester creation.
+
 ## 0.0.1
 
 * Initial release of `tester_track`.

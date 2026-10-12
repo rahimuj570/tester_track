@@ -132,6 +132,25 @@ void main() {
       expect(retrieved!.testerId, equals('T002'));
     });
 
+    test('syncTesterProfile creates initial profile safely on fresh launch',
+        () async {
+      final tester = await repository.syncTesterProfile(
+        testerId: 'T_FRESH',
+        authUid: 'anon_fresh_uid',
+        envInfo: envInfo,
+      );
+
+      expect(tester, isNotNull);
+      expect(tester!.testerId, equals('T_FRESH'));
+      expect(tester.authUid, equals('anon_fresh_uid'));
+      final doc = await fakeFirestore
+          .collection(TrackerConstants.collectionTesters)
+          .doc('T_FRESH')
+          .get();
+      expect(doc.exists, isTrue);
+      expect(doc.data()!['testerId'], equals('T_FRESH'));
+    });
+
     test('createSession, updateSessionProgress, and finalizeSession lifecycle',
         () async {
       final started = DateTime.utc(2026, 10, 8, 10, 0, 0);
