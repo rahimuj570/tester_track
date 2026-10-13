@@ -41,9 +41,9 @@ service cloud.firestore {
                     && request.resource.data.testerId == testerId;
 
       allow update: if isAnonymousTester() 
-                    && resource.data.authUid == request.auth.uid
-                    && request.resource.data.authUid == resource.data.authUid
-                    && request.resource.data.testerId == resource.data.testerId;
+                    && (resource.data.authUid == null || resource.data.authUid == request.auth.uid)
+                    && request.resource.data.authUid == request.auth.uid
+                    && request.resource.data.testerId == testerId;
 
       allow read: if isAuthorizedDeveloper() 
                   || (request.auth != null && (resource == null || resource.data.authUid == request.auth.uid));
@@ -60,7 +60,8 @@ service cloud.firestore {
                       && request.resource.data.authUid == request.auth.uid
                       && request.resource.data.testerId == testerId
                       && request.resource.data.sessionId == sessionId
-                      && get(/databases/$(database)/documents/testers/$(testerId)).data.authUid == request.auth.uid;
+                      && (get(/databases/$(database)/documents/testers/$(testerId)).data.authUid == null 
+                          || get(/databases/$(database)/documents/testers/$(testerId)).data.authUid == request.auth.uid);
 
         allow update: if isAnonymousTester() 
                       && resource.data.authUid == request.auth.uid

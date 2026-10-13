@@ -81,17 +81,76 @@ void main() {
         'testerId': 'T002',
         'authUid': 'uid_2',
         'startedAt': now.toIso8601String(),
+        'updatedAt': now.toIso8601String(),
         'durationSeconds': 125,
         'activeDate': '2026-10-10',
         'appVersion': '1.0.0',
         'platform': 'ios',
+        'deviceModel': 'iPhone 15 Pro',
+        'osVersion': 'iOS 17.4',
         'isFinalized': false,
       });
 
       expect(parsed.sessionId, equals('sess_456'));
       expect(parsed.durationSeconds, equals(125));
       expect(parsed.formattedDuration, equals('2m 5s'));
+      expect(parsed.platform, equals('ios'));
+      expect(parsed.deviceModel, equals('iPhone 15 Pro'));
+      expect(parsed.osVersion, equals('iOS 17.4'));
       expect(parsed.isFinalized, isFalse);
+      expect(parsed.updatedAt, isNotNull);
+      expect(parsed.isCurrentlyActive(), isTrue);
+      expect(parsed.isStale(), isFalse);
+
+      // Stale session (updated 10 minutes ago, unfinalized)
+      final staleSession = SessionViewModel(
+        sessionId: 'sess_stale',
+        testerId: 'T002',
+        authUid: 'uid_2',
+        startedAt: now.subtract(const Duration(minutes: 20)),
+        updatedAt: now.subtract(const Duration(minutes: 10)),
+        durationSeconds: 600,
+        activeDate: '2026-10-10',
+        appVersion: '1.0.0',
+        platform: 'ios',
+        isFinalized: false,
+      );
+      expect(staleSession.isCurrentlyActive(), isFalse);
+      expect(staleSession.isStale(), isTrue);
+
+      // Finalized session is never active
+      expect(session.isCurrentlyActive(), isFalse);
+      expect(session.isStale(), isFalse);
+    });
+
+    test('TesterViewModel isCurrentlyActive and hasStaleSessions logic', () {
+      final now = DateTime.now().toUtc();
+      final tester = TesterViewModel(
+        testerId: 'T003',
+        authUid: 'uid_3',
+        platform: 'android',
+        deviceModel: 'Pixel 8',
+        osVersion: 'Android 15',
+        appVersion: '1.0.0',
+        firstSeen: now,
+        lastSeen: now,
+        sessionCount: 5,
+        totalUsageSeconds: 300,
+        activeDaysCount: 1,
+        recentActiveDates: const ['2026-10-13'],
+        inProgressSessionCount: 2,
+        activeSessionCount: 0,
+        staleSessionCount: 2,
+      );
+
+      // Tester has unfinalized sessions, but none are actively alive right now (e.g. app closed/uninstalled)
+      expect(tester.isCurrentlyActive, isFalse);
+      expect(tester.hasStaleSessions, isTrue);
+
+      final testerActive = tester.copyWith(
+        activeSessionCount: 1,
+      );
+      expect(testerActive.isCurrentlyActive, isTrue);
     });
 
     test('RemoteConfigFormModel serialization and copyWith', () {

@@ -31,6 +31,7 @@ class SessionManager {
   bool _isInForeground = false;
   bool _isTrackingPermitted;
   Duration _currentFirestoreSyncInterval;
+  int _syncedDurationSeconds = 0;
 
   SessionManager({
     required this.testerId,
@@ -54,6 +55,17 @@ class SessionManager {
 
   /// The current active sync interval.
   Duration get currentFirestoreSyncInterval => _currentFirestoreSyncInterval;
+
+  /// The effective session inactivity timeout window.
+  ///
+  /// Uses [options.sessionTimeout] unless overridden by custom [options.inactivityDebounce].
+  Duration get effectiveTimeout =>
+      options.sessionTimeout != TrackerConstants.defaultSessionTimeout
+          ? options.sessionTimeout
+          : (options.inactivityDebounce !=
+                  TrackerConstants.defaultInactivityDebounce
+              ? options.inactivityDebounce
+              : options.sessionTimeout);
 
   /// The active in-memory session state if tracking.
   SessionState? get currentSession => _currentSession;
@@ -113,17 +125,39 @@ class SessionManager {
       }
 
       errorHandler.log(
-          'Found unfinalized session in local storage. Initiating crash recovery...');
+          'Found stored session in local storage. Checking session timeout...');
       SessionState? recoveredState;
       try {
         recoveredState = SessionState.fromJson(raw);
       } catch (e) {
-        errorHandler.log('Failed to parse unfinalized session state: $e');
+        errorHandler.log('Failed to parse stored session state: $e');
         await localStorage.remove(TrackerConstants.prefsActiveSessionKey);
         return;
       }
 
       if (!recoveredState.isFinalized) {
+        final now = DateTime.now().toUtc();
+        final inactivity = now.difference(recoveredState.lastHeartbeatAt);
+
+        // Resume if within session timeout window
+        if (inactivity <= effectiveTimeout) {
+          errorHandler.log(
+            'Recovered active session ${recoveredState.sessionId} within timeout window '
+            '(${inactivity.inMinutes}m <= ${effectiveTimeout.inMinutes}m). Resuming session.',
+          );
+          _currentSession = recoveredState.copyWith(
+            lastHeartbeatAt: now,
+          );
+          _syncedDurationSeconds = recoveredState.syncedDurationSeconds;
+          _lastActiveTime = now;
+          _isInForeground = true;
+          _isTracking = true;
+          await _persistLocalSessionState();
+          _startLocalHeartbeatTimer();
+          _startFirestoreSyncTimer();
+          return;
+        }
+
         final duration = recoveredState.observedDurationSeconds;
         errorHandler.log(
           'Recovering session ${recoveredState.sessionId}: started at ${recoveredState.startedAt}, '
@@ -178,6 +212,7 @@ class SessionManager {
 
       _lastActiveTime = now;
       _isInForeground = true;
+      _syncedDurationSeconds = 0;
 
       _currentSession = SessionState(
         sessionId: sessionId,
@@ -186,6 +221,7 @@ class SessionManager {
         startedAt: now,
         lastHeartbeatAt: now,
         accumulatedDurationSeconds: 0,
+        syncedDurationSeconds: 0,
         appVersion: envInfo.appVersion,
         platform: envInfo.platform,
         isFinalized: false,
@@ -207,6 +243,8 @@ class SessionManager {
         activeDate: _currentSession!.activeDate,
         appVersion: envInfo.appVersion,
         platform: envInfo.platform,
+        deviceModel: envInfo.deviceModel,
+        osVersion: envInfo.osVersion,
         isFinalized: false,
       );
       await firestoreRepository.createSession(sessionData);
@@ -234,6 +272,28 @@ class SessionManager {
       // Accumulate foreground time up to this exact moment only if coming from foreground
       if (wasInForeground) {
         _accumulateActiveForegroundTime();
+        if (_currentSession != null) {
+          final duration = _currentSession!.observedDurationSeconds;
+          final delta = max(0, duration - _syncedDurationSeconds);
+          if (delta > 0) {
+            _syncedDurationSeconds = duration;
+            _currentSession = _currentSession!.copyWith(
+              syncedDurationSeconds: _syncedDurationSeconds,
+            );
+            errorHandler.log(
+              'App paused: instantly syncing foreground progress (${duration}s, delta: +${delta}s) to Firestore.',
+            );
+            unawaited(firestoreRepository.syncSessionProgress(
+              testerId: _currentSession!.testerId,
+              sessionId: _currentSession!.sessionId,
+              durationSeconds: duration,
+              deltaSeconds: delta,
+              endedAt: _currentSession!.lastHeartbeatAt,
+              activeDate: _currentSession!.activeDate,
+            ));
+          }
+          unawaited(_persistLocalSessionState());
+        }
       }
 
       if (_inactivityDebounceTimer != null &&
@@ -242,14 +302,52 @@ class SessionManager {
       }
 
       errorHandler.log(
-        'App paused/inactive. Starting debounce timer (${options.inactivityDebounce.inSeconds}s)...',
+        'App paused/inactive. Session kept alive for ${effectiveTimeout.inMinutes > 0 ? '${effectiveTimeout.inMinutes}m' : '${effectiveTimeout.inSeconds}s'}. Background time excluded.',
       );
 
-      _inactivityDebounceTimer = Timer(options.inactivityDebounce, () {
-        errorHandler.log('Inactivity debounce expired. Finalizing session.');
+      _inactivityDebounceTimer = Timer(effectiveTimeout, () {
+        errorHandler.log('Inactivity timeout expired in background. Finalizing session.');
         unawaited(_finalizeCurrentSession());
       });
     }, operationName: 'SessionManager.onAppPauseOrInactive');
+  }
+
+  /// Handles host application engine detachment / termination.
+  ///
+  /// Flushes current active duration to Firestore, persists local state with latest timestamp,
+  /// and stops background tracking timers without clearing local storage so that returning
+  /// within [sessionTimeout] can resume the session.
+  void onAppDetached() {
+    errorHandler.runGuardedSync(() {
+      _cancelInactivityDebounce();
+      _cancelTimers();
+
+      if (_isInForeground) {
+        _accumulateActiveForegroundTime();
+      }
+      _isInForeground = false;
+      _isTracking = false;
+
+      final session = _currentSession;
+      if (session != null) {
+        final duration = session.observedDurationSeconds;
+        final delta = max(0, duration - _syncedDurationSeconds);
+        _syncedDurationSeconds = duration;
+        _currentSession = session.copyWith(
+          syncedDurationSeconds: _syncedDurationSeconds,
+        );
+        unawaited(firestoreRepository.syncSessionProgress(
+          testerId: session.testerId,
+          sessionId: session.sessionId,
+          durationSeconds: duration,
+          deltaSeconds: delta,
+          endedAt: session.lastHeartbeatAt,
+          activeDate: session.activeDate,
+        ));
+        unawaited(_persistLocalSessionState());
+        _currentSession = null;
+      }
+    }, operationName: 'SessionManager.onAppDetached');
   }
 
   /// Handles app entering foreground.
@@ -265,30 +363,43 @@ class SessionManager {
 
       final now = DateTime.now().toUtc();
 
-      if (_inactivityDebounceTimer != null &&
-          _inactivityDebounceTimer!.isActive) {
-        _inactivityDebounceTimer!.cancel();
-        _inactivityDebounceTimer = null;
-
-        // Reset lastActiveTime to now so background elapsed interval is NEVER counted
-        _lastActiveTime = now;
-
-        if (_currentSession != null) {
-          _currentSession = _currentSession!.copyWith(
-            lastHeartbeatAt: now,
+      if (_currentSession != null) {
+        final elapsed = now.difference(_currentSession!.lastHeartbeatAt);
+        if (elapsed > effectiveTimeout) {
+          _cancelInactivityDebounce();
+          errorHandler.log(
+            'App resumed after session timeout (${elapsed.inSeconds}s > ${effectiveTimeout.inSeconds}s). Finalizing previous session and starting fresh.',
           );
-          unawaited(_persistLocalSessionState());
+          unawaited(() async {
+            await _finalizeCurrentSession();
+            await startSession();
+          }());
+          return;
         }
 
+        _cancelInactivityDebounce();
+        _lastActiveTime = now;
+        _currentSession = _currentSession!.copyWith(
+          lastHeartbeatAt: now,
+        );
+        unawaited(_persistLocalSessionState());
+        _isTracking = true;
+        _startLocalHeartbeatTimer();
+        _startFirestoreSyncTimer();
+
         errorHandler.log(
-          'App resumed within debounce window. Keeping existing session ${_currentSession?.sessionId} active. Background interval excluded.',
+          'App resumed within session timeout (${effectiveTimeout.inMinutes > 0 ? '${effectiveTimeout.inMinutes}m' : '${effectiveTimeout.inSeconds}s'}). Keeping existing session ${_currentSession?.sessionId} active. Background interval excluded.',
         );
         return;
       }
 
-      if (!_isTracking || _currentSession == null) {
-        unawaited(startSession());
-      }
+      // No in-memory session (e.g. cold restart or process killed)
+      unawaited(() async {
+        await recoverInterruptedSession();
+        if (_currentSession == null) {
+          await startSession();
+        }
+      }());
     }, operationName: 'SessionManager.onAppResume');
   }
 
@@ -353,13 +464,19 @@ class SessionManager {
     final now = DateTime.now().toUtc();
     final elapsedSeconds = max(0, now.difference(_lastActiveTime!).inSeconds);
 
-    _lastActiveTime = now;
-    _currentSession = _currentSession!.copyWith(
-      lastHeartbeatAt: now,
-      accumulatedDurationSeconds:
-          _currentSession!.accumulatedDurationSeconds + elapsedSeconds,
-    );
-    unawaited(_persistLocalSessionState());
+    if (elapsedSeconds > 0) {
+      _lastActiveTime = _lastActiveTime!.add(Duration(seconds: elapsedSeconds));
+      _currentSession = _currentSession!.copyWith(
+        lastHeartbeatAt: now,
+        accumulatedDurationSeconds:
+            _currentSession!.accumulatedDurationSeconds + elapsedSeconds,
+      );
+      unawaited(_persistLocalSessionState());
+    } else {
+      _currentSession = _currentSession!.copyWith(
+        lastHeartbeatAt: now,
+      );
+    }
   }
 
   /// Starts the local-only heartbeat timer (default: 15s).
@@ -388,11 +505,20 @@ class SessionManager {
           _accumulateActiveForegroundTime();
         }
         final duration = _currentSession!.observedDurationSeconds;
-        unawaited(firestoreRepository.updateSessionProgress(
+        final delta = max(0, duration - _syncedDurationSeconds);
+        _syncedDurationSeconds = duration;
+        _currentSession = _currentSession!.copyWith(
+          syncedDurationSeconds: _syncedDurationSeconds,
+        );
+        unawaited(firestoreRepository.syncSessionProgress(
           testerId: _currentSession!.testerId,
           sessionId: _currentSession!.sessionId,
           durationSeconds: duration,
+          deltaSeconds: delta,
+          endedAt: _currentSession!.lastHeartbeatAt,
+          activeDate: _currentSession!.activeDate,
         ));
+        unawaited(_persistLocalSessionState());
       }, operationName: 'SessionManager.periodicSync');
     });
   }

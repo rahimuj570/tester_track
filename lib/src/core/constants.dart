@@ -20,6 +20,7 @@ class TrackerConstants {
   static const Duration defaultLocalHeartbeatInterval = Duration(seconds: 15);
   static const Duration defaultFirestoreSyncInterval = Duration(minutes: 5);
   static const Duration defaultInactivityDebounce = Duration(seconds: 15);
+  static const Duration defaultSessionTimeout = Duration(minutes: 30);
   static const Duration remoteConfigTimeout = Duration(seconds: 4);
 
   /// Maximum number of recent active calendar dates stored in tester document.

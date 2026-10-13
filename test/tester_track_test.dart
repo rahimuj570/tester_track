@@ -18,6 +18,7 @@ void main() {
           options.localHeartbeatInterval, equals(const Duration(seconds: 15)));
       expect(options.firestoreSyncInterval, equals(const Duration(minutes: 5)));
       expect(options.inactivityDebounce, equals(const Duration(seconds: 15)));
+      expect(options.sessionTimeout, equals(const Duration(minutes: 30)));
     });
 
     test('startTracking does not throw even when not initialized', () {

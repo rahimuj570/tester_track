@@ -61,36 +61,59 @@ class DeviceInfoHelper {
             if (kIsWeb) {
               platform = 'web';
               final webInfo = await _deviceInfo.webBrowserInfo;
-              deviceModel = webInfo.browserName.name;
+              deviceModel = webInfo.browserName.name.isNotEmpty
+                  ? webInfo.browserName.name
+                  : 'Web Browser';
               osVersion = webInfo.userAgent ?? 'web';
             } else if (Platform.isAndroid) {
               platform = 'android';
               final androidInfo = await _deviceInfo.androidInfo;
-              deviceModel =
-                  '${androidInfo.manufacturer} ${androidInfo.model}'.trim();
+              final manufacturer = androidInfo.manufacturer.trim();
+              final model = androidInfo.model.trim();
+              if (manufacturer.isNotEmpty && model.isNotEmpty) {
+                deviceModel = model.toLowerCase().startsWith(manufacturer.toLowerCase())
+                    ? model
+                    : '$manufacturer $model';
+              } else if (model.isNotEmpty) {
+                deviceModel = model;
+              } else if (manufacturer.isNotEmpty) {
+                deviceModel = manufacturer;
+              } else {
+                deviceModel = 'Android Device';
+              }
               osVersion =
                   'Android ${androidInfo.version.release} (SDK ${androidInfo.version.sdkInt})';
             } else if (Platform.isIOS) {
               platform = 'ios';
               final iosInfo = await _deviceInfo.iosInfo;
-              deviceModel = iosInfo.utsname.machine;
+              final model = iosInfo.utsname.machine.trim();
+              final name = iosInfo.name.trim();
+              deviceModel = model.isNotEmpty
+                  ? model
+                  : (name.isNotEmpty ? name : 'iOS Device');
               osVersion = '${iosInfo.systemName} ${iosInfo.systemVersion}';
             } else if (Platform.isMacOS) {
               platform = 'macos';
               final macInfo = await _deviceInfo.macOsInfo;
-              deviceModel = macInfo.model;
+              deviceModel = macInfo.model.trim().isNotEmpty
+                  ? macInfo.model.trim()
+                  : 'Mac';
               osVersion =
                   '${macInfo.osRelease} (macOS ${macInfo.majorVersion}.${macInfo.minorVersion})';
             } else if (Platform.isWindows) {
               platform = 'windows';
               final winInfo = await _deviceInfo.windowsInfo;
-              deviceModel = winInfo.productName;
+              deviceModel = winInfo.productName.trim().isNotEmpty
+                  ? winInfo.productName.trim()
+                  : 'Windows PC';
               osVersion =
                   'Windows ${winInfo.majorVersion}.${winInfo.minorVersion} (Build ${winInfo.buildNumber})';
             } else if (Platform.isLinux) {
               platform = 'linux';
               final linuxInfo = await _deviceInfo.linuxInfo;
-              deviceModel = linuxInfo.prettyName;
+              deviceModel = linuxInfo.prettyName.trim().isNotEmpty
+                  ? linuxInfo.prettyName.trim()
+                  : 'Linux Device';
               osVersion = linuxInfo.versionId ?? 'linux';
             }
           } catch (e) {

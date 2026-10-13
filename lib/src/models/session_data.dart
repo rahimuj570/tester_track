@@ -12,6 +12,8 @@ class SessionData {
   final String activeDate;
   final String appVersion;
   final String platform;
+  final String deviceModel;
+  final String osVersion;
   final bool isFinalized;
 
   const SessionData({
@@ -24,6 +26,8 @@ class SessionData {
     required this.activeDate,
     required this.appVersion,
     required this.platform,
+    this.deviceModel = 'unknown',
+    this.osVersion = 'unknown',
     required this.isFinalized,
   });
 
@@ -38,6 +42,8 @@ class SessionData {
       'activeDate': activeDate,
       'appVersion': appVersion,
       'platform': platform,
+      'deviceModel': deviceModel,
+      'osVersion': osVersion,
       'isFinalized': isFinalized,
     };
   }
@@ -74,6 +80,8 @@ class SessionData {
       activeDate: map['activeDate'] as String? ?? '',
       appVersion: map['appVersion'] as String? ?? 'unknown',
       platform: map['platform'] as String? ?? 'unknown',
+      deviceModel: map['deviceModel'] as String? ?? 'unknown',
+      osVersion: map['osVersion'] as String? ?? 'unknown',
       isFinalized: map['isFinalized'] as bool? ?? false,
     );
   }
@@ -88,6 +96,8 @@ class SessionData {
     String? activeDate,
     String? appVersion,
     String? platform,
+    String? deviceModel,
+    String? osVersion,
     bool? isFinalized,
   }) {
     return SessionData(
@@ -100,6 +110,8 @@ class SessionData {
       activeDate: activeDate ?? this.activeDate,
       appVersion: appVersion ?? this.appVersion,
       platform: platform ?? this.platform,
+      deviceModel: deviceModel ?? this.deviceModel,
+      osVersion: osVersion ?? this.osVersion,
       isFinalized: isFinalized ?? this.isFinalized,
     );
   }

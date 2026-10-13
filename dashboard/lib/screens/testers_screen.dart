@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/tester_view_model.dart';
 import '../state/dashboard_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/stat_card.dart';
@@ -181,13 +182,13 @@ class _TestersScreenState extends State<TestersScreen> {
                     iconColor: const Color(0xFF38BDF8),
                   ),
                   StatCard(
-                    title: 'Active In-Progress',
-                    value: '${state.totalInProgressSessionsCount}',
-                    subtitle: state.totalInProgressUsageSeconds > 0
-                        ? '${state.formattedInProgressUsage} in-flight active time'
-                        : 'Currently foreground active',
+                    title: 'Active Now',
+                    value: '${state.totalActiveSessionsCount}',
+                    subtitle: state.totalActiveSessionsCount > 0
+                        ? '${state.formattedActiveUsage} in-flight active time'
+                        : 'No testers currently in foreground',
                     icon: Icons.bolt_rounded,
-                    iconColor: AppTheme.warningColor,
+                    iconColor: AppTheme.successColor,
                   ),
                 ],
               );
@@ -271,6 +272,7 @@ class _TestersScreenState extends State<TestersScreen> {
                       if (val != null) setState(() => _sortBy = val);
                     },
                   ),
+
                 ],
               ),
             ),
@@ -335,9 +337,7 @@ class _TestersScreenState extends State<TestersScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      t.platform.toLowerCase().contains('ios')
-                                          ? Icons.phone_iphone
-                                          : Icons.android,
+                                      _getPlatformIcon(t.platform),
                                       size: 16,
                                       color: AppTheme.primaryColor,
                                     ),
@@ -355,7 +355,7 @@ class _TestersScreenState extends State<TestersScreen> {
                               DataCell(Text(t.platform)),
                               DataCell(Text(t.deviceModel)),
                               DataCell(
-                                t.inProgressSessionCount > 0
+                                t.isCurrentlyActive
                                     ? Container(
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 8, vertical: 4),
@@ -469,7 +469,7 @@ class _TestersScreenState extends State<TestersScreen> {
                                               color: Color(0xFF38BDF8),
                                             ),
                                           ),
-                                          if (t.inProgressSessionCount > 0)
+                                          if (t.isCurrentlyActive)
                                             const Text(
                                               'tracking now',
                                               style: TextStyle(
@@ -488,7 +488,7 @@ class _TestersScreenState extends State<TestersScreen> {
                               DataCell(Text(t.appVersion)),
                               DataCell(
                                 Text(
-                                  t.inProgressSessionCount > 0
+                                  t.isCurrentlyActive
                                       ? t.formattedTotalUsageTime
                                       : t.formattedUsageTime,
                                   style: const TextStyle(
@@ -496,57 +496,69 @@ class _TestersScreenState extends State<TestersScreen> {
                                 ),
                               ),
                               DataCell(
-                                t.inProgressSessionCount > 0
-                                    ? Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            '${t.totalRecordedSessions}',
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w600),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      t.isCurrentlyActive
+                                          ? '${t.totalRecordedSessions}'
+                                          : '${t.sessionCount}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                    if (t.isCurrentlyActive) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.successColor
+                                              .withValues(alpha: 0.15),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          '+${t.activeSessionCount} active',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppTheme.successColor,
                                           ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.warningColor
-                                                  .withValues(alpha: 0.15),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              '+${t.inProgressSessionCount} active',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppTheme.warningColor,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : Text(
-                                        '${t.sessionCount}',
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600),
+                                        ),
                                       ),
+                                    ],
+                                  ],
+                                ),
                               ),
                               DataCell(Text('${t.activeDaysCount} d')),
                               DataCell(Text(
                                   dateFormat.format(t.lastSeen.toLocal()))),
                               DataCell(
-                                ElevatedButton.icon(
-                                  icon: const Icon(Icons.visibility, size: 14),
-                                  label: const Text('View Sessions',
-                                      style: TextStyle(fontSize: 12)),
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
-                                  ),
-                                  onPressed: () {
-                                    state.selectTester(t.testerId);
-                                  },
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.visibility, size: 14),
+                                      label: const Text('View Sessions',
+                                          style: TextStyle(fontSize: 12)),
+                                      style: ElevatedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 8),
+                                      ),
+                                      onPressed: () {
+                                        state.selectTester(t.testerId);
+                                      },
+                                    ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_outlined, size: 16),
+                                      tooltip: 'Edit Device Info',
+                                      color: AppTheme.textMuted,
+                                      onPressed: () {
+                                        _showEditTesterDialog(context, state, t);
+                                      },
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -557,6 +569,117 @@ class _TestersScreenState extends State<TestersScreen> {
                   ),
                 ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getPlatformIcon(String platform) {
+    final p = platform.toLowerCase();
+    if (p.contains('ios') || p.contains('iphone') || p.contains('ipad')) {
+      return Icons.phone_iphone;
+    } else if (p.contains('web')) {
+      return Icons.language;
+    } else if (p.contains('win') || p.contains('mac') || p.contains('linux')) {
+      return Icons.laptop_chromebook;
+    }
+    return Icons.android;
+  }
+
+  void _showEditTesterDialog(
+    BuildContext context,
+    DashboardState state,
+    TesterViewModel tester,
+  ) {
+    final platformCtrl = TextEditingController(
+        text: tester.platform == 'unknown' ? '' : tester.platform);
+    final modelCtrl = TextEditingController(
+        text: tester.deviceModel == 'unknown' ? '' : tester.deviceModel);
+    final osCtrl = TextEditingController(
+        text: tester.osVersion == 'unknown' ? '' : tester.osVersion);
+    final appCtrl = TextEditingController(
+        text: tester.appVersion == 'unknown' ? '' : tester.appVersion);
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.edit_rounded, color: AppTheme.primaryColor),
+            const SizedBox(width: 10),
+            Text('Edit Info (${tester.testerId})'),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: platformCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Platform (e.g. android, ios, web)',
+                    hintText: 'android',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: modelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Device Model (e.g. Pixel 7, Galaxy S23)',
+                    hintText: 'Google Pixel 7',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: osCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'OS Version (e.g. Android 14)',
+                    hintText: 'Android 14',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: appCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'App Version (e.g. 1.0.0 (1))',
+                    hintText: '1.0.0 (1)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final success = await state.updateTesterMetadata(
+                testerId: tester.testerId,
+                platform: platformCtrl.text.trim(),
+                deviceModel: modelCtrl.text.trim(),
+                osVersion: osCtrl.text.trim(),
+                appVersion: appCtrl.text.trim(),
+              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success
+                        ? 'Updated ${tester.testerId} metadata successfully!'
+                        : 'Failed to update tester metadata.'),
+                    backgroundColor:
+                        success ? AppTheme.successColor : AppTheme.dangerColor,
+                  ),
+                );
+              }
+            },
+            child: const Text('Save'),
           ),
         ],
       ),

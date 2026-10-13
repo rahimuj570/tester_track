@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants.dart';
 import '../core/error_handler.dart';
@@ -100,7 +101,7 @@ class FirestoreRepository {
         final data = newTester.toMap();
         data['updatedAt'] = FieldValue.serverTimestamp();
 
-        await docRef.set(data, SetOptions(merge: false));
+        await docRef.set(data, SetOptions(merge: true));
         errorHandler.log('Created new tester document: testers/$testerId');
         return newTester;
       } else {
@@ -117,7 +118,13 @@ class FirestoreRepository {
           );
         }
 
+        final effectiveAuthUid = existingTester.authUid.isNotEmpty
+            ? existingTester.authUid
+            : authUid;
+
         final updatedData = <String, dynamic>{
+          'testerId': testerId,
+          'authUid': effectiveAuthUid,
           'lastSeen': nowUtc.toIso8601String(),
           'platform': envInfo.platform,
           'deviceModel': envInfo.deviceModel,
@@ -126,10 +133,29 @@ class FirestoreRepository {
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
-        await docRef.update(updatedData);
+        // If existing document was created without metadata or aggregates, backfill them
+        if (existingData['firstSeen'] == null) {
+          updatedData['firstSeen'] = nowUtc.toIso8601String();
+        }
+        if (existingData['sessionCount'] == null) {
+          updatedData['sessionCount'] = 0;
+        }
+        if (existingData['totalUsageSeconds'] == null) {
+          updatedData['totalUsageSeconds'] = 0;
+        }
+        if (existingData['activeDaysCount'] == null) {
+          updatedData['activeDaysCount'] = 0;
+        }
+        if (existingData['recentActiveDates'] == null) {
+          updatedData['recentActiveDates'] = <String>[];
+        }
+
+        await docRef.set(updatedData, SetOptions(merge: true));
         errorHandler.log('Updated existing tester document: testers/$testerId');
 
         return existingTester.copyWith(
+          testerId: testerId,
+          authUid: effectiveAuthUid,
           lastSeen: nowUtc,
           platform: envInfo.platform,
           deviceModel: envInfo.deviceModel,
@@ -159,22 +185,12 @@ class FirestoreRepository {
   Future<bool> createSession(SessionData session) async {
     return await errorHandler.runGuarded<bool>(() async {
           final docRef = _sessionDoc(session.testerId, session.sessionId);
-          try {
-            final docSnap = await docRef.get();
-            if (docSnap.exists) {
-              errorHandler.log(
-                  'Session ${session.sessionId} already exists in Firestore.');
-              return true;
-            }
-          } catch (e) {
-            errorHandler.log(
-                'Pre-check read for session ${session.sessionId} threw: $e. Proceeding with creation.');
-          }
 
           final data = session.toMap();
           data['updatedAt'] = FieldValue.serverTimestamp();
 
-          await docRef.set(data);
+          await docRef.set(data, SetOptions(merge: true));
+
           errorHandler.log(
               'Created session document: testers/${session.testerId}/sessions/${session.sessionId}');
           return true;
@@ -187,24 +203,65 @@ class FirestoreRepository {
   /// Synchronizes in-progress session duration to Firestore.
   ///
   /// Uses absolute duration value to prevent duplicate counting during retries.
+  /// Synchronizes session progress and increments tester aggregate usage time.
+  /// Works reliably both online and offline without requiring transactions.
+  Future<bool> syncSessionProgress({
+    required String testerId,
+    required String sessionId,
+    required int durationSeconds,
+    required int deltaSeconds,
+    required DateTime endedAt,
+    required String activeDate,
+  }) async {
+    return await errorHandler.runGuarded<bool>(() async {
+          final docRef = _sessionDoc(testerId, sessionId);
+          final testerRef = _testerDoc(testerId);
+
+          final sessionUpdateData = <String, dynamic>{
+            'durationSeconds': durationSeconds,
+            'endedAt': endedAt.toUtc().toIso8601String(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          };
+
+          if (deltaSeconds > 0) {
+            sessionUpdateData['syncedTesterUsageSeconds'] = durationSeconds;
+          }
+
+          await docRef.set(sessionUpdateData, SetOptions(merge: true));
+
+          if (deltaSeconds > 0) {
+            await testerRef.set({
+              'testerId': testerId,
+              'totalUsageSeconds': FieldValue.increment(deltaSeconds),
+              'lastSeen': endedAt.toUtc().toIso8601String(),
+              'recentActiveDates': FieldValue.arrayUnion([activeDate]),
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
+
+          errorHandler.log(
+              'Synced session progress for $sessionId (duration: ${durationSeconds}s, +${deltaSeconds}s)');
+          return true;
+        },
+            operationName: 'FirestoreRepository.syncSessionProgress',
+            fallbackValue: false) ??
+        false;
+  }
+
+  /// Synchronizes in-progress session duration to Firestore.
   Future<bool> updateSessionProgress({
     required String testerId,
     required String sessionId,
     required int durationSeconds,
   }) async {
-    return await errorHandler.runGuarded<bool>(() async {
-          final docRef = _sessionDoc(testerId, sessionId);
-          await docRef.update({
-            'durationSeconds': durationSeconds,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-          errorHandler.log(
-              'Synced session progress for $sessionId (duration: ${durationSeconds}s)');
-          return true;
-        },
-            operationName: 'FirestoreRepository.updateSessionProgress',
-            fallbackValue: false) ??
-        false;
+    return syncSessionProgress(
+      testerId: testerId,
+      sessionId: sessionId,
+      durationSeconds: durationSeconds,
+      deltaSeconds: 0,
+      endedAt: DateTime.now().toUtc(),
+      activeDate: DateTime.now().toUtc().toIso8601String().split('T').first,
+    );
   }
 
   /// Finalizes an active session with its final observed end time and duration.
@@ -225,64 +282,105 @@ class FirestoreRepository {
           final sessionRef = _sessionDoc(testerId, sessionId);
           final testerRef = _testerDoc(testerId);
 
-          return await firestore.runTransaction<bool>((transaction) async {
-            // ALL READS MUST OCCUR BEFORE ANY WRITES IN FIRESTORE TRANSACTIONS
-            final sessionSnap = await transaction.get(sessionRef);
+          try {
+            return await firestore.runTransaction<bool>((transaction) async {
+              // ALL READS MUST OCCUR BEFORE ANY WRITES IN FIRESTORE TRANSACTIONS
+              final sessionSnap = await transaction.get(sessionRef);
 
-            if (!sessionSnap.exists || sessionSnap.data() == null) {
-              errorHandler.log(
-                  'Cannot finalize session $sessionId: document not found in Firestore.');
-              return false;
-            }
+              if (!sessionSnap.exists || sessionSnap.data() == null) {
+                errorHandler.log(
+                    'Cannot finalize session $sessionId: document not found in Firestore.');
+                return false;
+              }
 
-            final existingSession = SessionData.fromMap(sessionSnap.data()!);
-            if (existingSession.isFinalized) {
+              final existingSession = SessionData.fromMap(sessionSnap.data()!);
+              if (existingSession.isFinalized) {
+                errorHandler.log(
+                    'Session $sessionId is already finalized in transaction. Skipping duplicate aggregate update.');
+                return true;
+              }
+
+              final testerSnap = await transaction.get(testerRef);
+
+              final sessionDataMap = sessionSnap.data()!;
+              final alreadyCreditedUsage =
+                  (sessionDataMap['syncedTesterUsageSeconds'] as num?)?.toInt() ?? 0;
+              final deltaToCredit =
+                  max(0, durationSeconds - alreadyCreditedUsage);
+
+              // ALL WRITES OCCUR AFTER ALL READS
+              // 1. Mark session finalized
+              transaction.update(sessionRef, {
+                'isFinalized': true,
+                'endedAt': endedAt.toUtc().toIso8601String(),
+                'durationSeconds': durationSeconds,
+                'syncedTesterUsageSeconds': durationSeconds,
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+
+              // 2. Atomically update tester profile aggregates
+              if (testerSnap.exists && testerSnap.data() != null) {
+                final tester = TesterData.fromMap(testerSnap.data()!);
+
+                final datesSet = <String>{
+                  ...tester.recentActiveDates,
+                  activeDate
+                };
+                final updatedDates = datesSet.toList()..sort();
+                if (updatedDates.length > TrackerConstants.maxRecentActiveDates) {
+                  updatedDates.removeRange(
+                      0,
+                      updatedDates.length -
+                          TrackerConstants.maxRecentActiveDates);
+                }
+
+                transaction.update(testerRef, {
+                  'lastSeen': endedAt.toUtc().toIso8601String(),
+                  'sessionCount': tester.sessionCount + 1,
+                  'totalUsageSeconds': tester.totalUsageSeconds + deltaToCredit,
+                  'activeDaysCount': datesSet.length,
+                  'recentActiveDates': updatedDates,
+                  'updatedAt': FieldValue.serverTimestamp(),
+                });
+              }
+
               errorHandler.log(
-                  'Session $sessionId is already finalized in transaction. Skipping duplicate aggregate update.');
+                  'Transactionally finalized session $sessionId (duration: ${durationSeconds}s, +${deltaToCredit}s credited) and updated aggregates.');
               return true;
-            }
+            });
+          } catch (e) {
+            errorHandler.log(
+                'Transaction failed ($e). Falling back to non-transactional merge for offline safety.');
 
-            final testerSnap = await transaction.get(testerRef);
+            int deltaToCredit = durationSeconds;
+            try {
+              final sessionSnap = await sessionRef.get();
+              if (sessionSnap.exists && sessionSnap.data() != null) {
+                final alreadyCreditedUsage =
+                    (sessionSnap.data()!['syncedTesterUsageSeconds'] as num?)?.toInt() ?? 0;
+                deltaToCredit = max(0, durationSeconds - alreadyCreditedUsage);
+              }
+            } catch (_) {}
 
-            // ALL WRITES OCCUR AFTER ALL READS
-            // 1. Mark session finalized
-            transaction.update(sessionRef, {
+            await sessionRef.set({
               'isFinalized': true,
               'endedAt': endedAt.toUtc().toIso8601String(),
               'durationSeconds': durationSeconds,
+              'syncedTesterUsageSeconds': durationSeconds,
               'updatedAt': FieldValue.serverTimestamp(),
-            });
+            }, SetOptions(merge: true));
 
-            // 2. Atomically update tester profile aggregates
-            if (testerSnap.exists && testerSnap.data() != null) {
-              final tester = TesterData.fromMap(testerSnap.data()!);
+            await testerRef.set({
+              'testerId': testerId,
+              'lastSeen': endedAt.toUtc().toIso8601String(),
+              'sessionCount': FieldValue.increment(1),
+              'totalUsageSeconds': FieldValue.increment(deltaToCredit),
+              'recentActiveDates': FieldValue.arrayUnion([activeDate]),
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
 
-              final datesSet = <String>{
-                ...tester.recentActiveDates,
-                activeDate
-              };
-              final updatedDates = datesSet.toList()..sort();
-              if (updatedDates.length > TrackerConstants.maxRecentActiveDates) {
-                updatedDates.removeRange(
-                    0,
-                    updatedDates.length -
-                        TrackerConstants.maxRecentActiveDates);
-              }
-
-              transaction.update(testerRef, {
-                'lastSeen': endedAt.toUtc().toIso8601String(),
-                'sessionCount': tester.sessionCount + 1,
-                'totalUsageSeconds': tester.totalUsageSeconds + durationSeconds,
-                'activeDaysCount': datesSet.length,
-                'recentActiveDates': updatedDates,
-                'updatedAt': FieldValue.serverTimestamp(),
-              });
-            }
-
-            errorHandler.log(
-                'Transactionally finalized session $sessionId (duration: ${durationSeconds}s) and updated aggregates.');
             return true;
-          });
+          }
         },
             operationName: 'FirestoreRepository.finalizeSession',
             fallbackValue: false) ??

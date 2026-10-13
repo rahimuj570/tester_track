@@ -2,6 +2,14 @@
 
 All notable changes to `tester_track` will be documented in this file.
 
+## 0.0.3
+
+* Implement industry-standard 30-minute session inactivity window (`sessionTimeout`). Returning to the app within 30 minutes seamlessly resumes the active session.
+* Strictly exclude background/minimize wall-clock idle time from session duration — only foreground usage is accumulated.
+* Optimize Firestore network operations for Firebase Spark Free Tier: eliminate redundant network writes on momentary app minimize/switching, buffering state locally in `SharedPreferences`.
+* Enhance crash & cold-start recovery to safely resume unfinalized sessions on app restart within the timeout window.
+* Resolve transient `[cloud_firestore/unavailable]` errors during app backgrounding.
+
 ## 0.0.2
 
 * Harden initial tester profile synchronization and session creation against non-existent document pre-check read errors.

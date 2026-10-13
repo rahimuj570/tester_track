@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/session_view_model.dart';
 import '../models/tester_view_model.dart';
 import '../state/dashboard_state.dart';
 import '../theme/app_theme.dart';
@@ -43,85 +42,6 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
     return remMin > 0 ? '${hours}h ${remMin}m' : '${hours}h';
   }
 
-  Future<void> _finalizeSingle(
-      BuildContext context, SessionViewModel session) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Finalize Session'),
-        content: Text(
-          'Mark session "${session.sessionId}" as FINALIZED with observed duration of ${session.formattedDuration} and add it to tester aggregates?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Finalize'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      final ok = await widget.state.finalizeSession(session);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ok
-                  ? 'Session finalized successfully and added to aggregates.'
-                  : 'Failed to finalize session.',
-            ),
-            backgroundColor:
-                ok ? AppTheme.successColor : AppTheme.dangerColor,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _finalizeAllStale(BuildContext context, int count) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Finalize In-Progress Sessions'),
-        content: Text(
-          'Are you sure you want to finalize all $count in-progress sessions for ${widget.tester.testerId} and update cumulative totals?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Finalize All'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      final ok = await widget.state.finalizeAllStaleSessions();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ok
-                  ? 'All in-progress sessions finalized successfully.'
-                  : 'Failed to finalize sessions.',
-            ),
-            backgroundColor:
-                ok ? AppTheme.successColor : AppTheme.dangerColor,
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
@@ -130,12 +50,14 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
     final sessions = state.selectedTesterSessions;
 
-    final inProgressSessions = sessions.where((s) => !s.isFinalized).toList();
-    final inProgressCount = inProgressSessions.length;
+    final activeSessions =
+        sessions.where((s) => s.isCurrentlyActive()).toList();
+    final activeCount = activeSessions.length;
     final totalRecordedCount =
         sessions.isNotEmpty ? sessions.length : tester.sessionCount;
-    final inProgressSeconds = inProgressSessions.fold<int>(
-        0, (sum, s) => sum + s.durationSeconds);
+    final inProgressSessions = sessions.where((s) => !s.isFinalized).toList();
+    final inProgressSeconds =
+        inProgressSessions.fold<int>(0, (sum, s) => sum + s.durationSeconds);
     final totalSeconds = tester.totalUsageSeconds + inProgressSeconds;
 
     return SingleChildScrollView(
@@ -186,7 +108,7 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                             ),
                           ),
                         ),
-                        if (inProgressCount > 0)
+                        if (activeCount > 0)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
@@ -263,6 +185,7 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                               ),
                             ),
                           ),
+
                       ],
                     ),
                     Text(
@@ -275,6 +198,16 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                   ],
                 ),
               ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.edit_outlined, size: 14),
+                label: const Text('Edit Info', style: TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                onPressed: () => _showEditTesterDialog(context, state, tester),
+              ),
+              const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.refresh_rounded),
                 tooltip: 'Refresh Sessions',
@@ -337,12 +270,10 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                   ),
                   _DetailCard(
                     title: 'Total Sessions',
-                    value: inProgressCount > 0
-                        ? '$totalRecordedCount ($inProgressCount Active)'
+                    value: activeCount > 0
+                        ? '$totalRecordedCount ($activeCount Active)'
                         : '$totalRecordedCount',
-                    subtitle: inProgressCount > 0
-                        ? 'Total: ${_formatUsageSeconds(totalSeconds)} (${tester.formattedUsageTime} Finalized)'
-                        : 'Total usage: ${tester.formattedUsageTime}',
+                    subtitle: 'Total usage: ${_formatUsageSeconds(totalSeconds)}',
                     icon: Icons.timer,
                   ),
                   _DetailCard(
@@ -379,23 +310,35 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          if (inProgressCount > 0)
-                            OutlinedButton.icon(
-                              icon: const Icon(Icons.check_circle_outline,
-                                  size: 14),
-                              label: Text(
-                                'Finalize All In-Progress ($inProgressCount)',
-                                style: const TextStyle(fontSize: 12),
+                          if (activeCount > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppTheme.successColor
+                                    .withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppTheme.successColor
+                                      .withValues(alpha: 0.4),
+                                ),
                               ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.warningColor,
-                                side: const BorderSide(
-                                    color: AppTheme.warningColor),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 6),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.circle,
+                                      size: 7, color: AppTheme.successColor),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '$activeCount Active Now',
+                                    style: const TextStyle(
+                                      color: AppTheme.successColor,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              onPressed: () =>
-                                  _finalizeAllStale(context, inProgressCount),
                             ),
                         ],
                       ),
@@ -440,113 +383,235 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                           child: DataTable(
                             headingRowColor: WidgetStateProperty.all(
                                 const Color(0xFF0F172A)),
-                        columns: const [
-                          DataColumn(label: Text('Session ID')),
-                          DataColumn(label: Text('Status')),
-                          DataColumn(label: Text('Started At (Local)')),
-                          DataColumn(label: Text('Ended At')),
-                          DataColumn(label: Text('Observed Duration')),
-                          DataColumn(label: Text('Active Date')),
-                          DataColumn(label: Text('App Version')),
-                          DataColumn(label: Text('Action')),
-                        ],
-                        rows: sessions.map((s) {
-                          return DataRow(
-                            cells: [
-                              DataCell(
-                                SelectableText(
-                                  s.sessionId,
-                                  style: const TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: s.isFinalized
-                                        ? AppTheme.successColor
-                                            .withValues(alpha: 0.15)
-                                        : AppTheme.warningColor
-                                            .withValues(alpha: 0.15),
-                                  ),
-                                  child: Text(
-                                    s.isFinalized ? 'FINALIZED' : 'IN-PROGRESS',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: s.isFinalized
-                                          ? AppTheme.successColor
-                                          : AppTheme.warningColor,
+                            columns: const [
+                              DataColumn(label: Text('Session ID')),
+                              DataColumn(label: Text('Status')),
+                              DataColumn(label: Text('Started At (Local)')),
+                              DataColumn(label: Text('Ended At')),
+                              DataColumn(label: Text('Observed Duration')),
+                              DataColumn(label: Text('Active Date')),
+                              DataColumn(label: Text('App Version')),
+                              DataColumn(label: Text('Live State')),
+                            ],
+                            rows: sessions.map((s) {
+                              return DataRow(
+                                cells: [
+                                  DataCell(
+                                    SelectableText(
+                                      s.sessionId,
+                                      style: const TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              DataCell(Text(
-                                  dateFormat.format(s.startedAt.toLocal()))),
-                              DataCell(Text(s.endedAt != null
-                                  ? dateFormat.format(s.endedAt!.toLocal())
-                                  : '—')),
-                              DataCell(
-                                Text(
-                                  s.formattedDuration,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              DataCell(Text(s.activeDate)),
-                              DataCell(Text(s.appVersion)),
-                              DataCell(
-                                s.isFinalized
-                                    ? const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.check_circle,
-                                              size: 14,
-                                              color: AppTheme.successColor),
-                                          SizedBox(width: 4),
-                                          Text(
-                                            'Closed',
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                color: AppTheme.textMuted),
-                                          ),
-                                        ],
-                                      )
-                                    : ElevatedButton.icon(
-                                        icon: const Icon(Icons.done_all,
-                                            size: 12),
-                                        label: const Text('Finalize',
-                                            style: TextStyle(fontSize: 11)),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              AppTheme.primaryColor,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                          minimumSize: Size.zero,
-                                        ),
-                                        onPressed: () =>
-                                            _finalizeSingle(context, s),
+                                  DataCell(
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: s.isCurrentlyActive()
+                                            ? AppTheme.successColor
+                                                .withValues(alpha: 0.15)
+                                            : Colors.white.withValues(alpha: 0.05),
+                                        borderRadius: BorderRadius.circular(4),
                                       ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
+                                      child: Text(
+                                        s.isCurrentlyActive()
+                                            ? 'ACTIVE NOW'
+                                            : 'COMPLETED',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: s.isCurrentlyActive()
+                                              ? AppTheme.successColor
+                                              : AppTheme.textMuted,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  DataCell(Text(dateFormat
+                                      .format(s.startedAt.toLocal()))),
+                                  DataCell(Text(s.endedAt != null
+                                      ? dateFormat.format(s.endedAt!.toLocal())
+                                      : '—')),
+                                  DataCell(
+                                    Text(
+                                      s.formattedDuration,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  DataCell(Text(s.activeDate)),
+                                  DataCell(Text(s.appVersion)),
+                                  DataCell(
+                                    s.isCurrentlyActive()
+                                        ? Container(
+                                            padding:
+                                                const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.successColor
+                                                  .withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                  color: AppTheme
+                                                      .successColor
+                                                      .withValues(
+                                                          alpha: 0.4)),
+                                            ),
+                                            child: const Row(
+                                              mainAxisSize:
+                                                  MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.circle,
+                                                    size: 7,
+                                                    color: AppTheme
+                                                        .successColor),
+                                                SizedBox(width: 4),
+                                                Text(
+                                                  'Active Now',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.bold,
+                                                    color: AppTheme
+                                                        .successColor,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        : const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.check_circle_outline,
+                                                  size: 14,
+                                                  color: AppTheme.textMuted),
+                                              SizedBox(width: 4),
+                                              Text(
+                                                'Completed',
+                                                style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: AppTheme.textMuted),
+                                              ),
+                                            ],
+                                          ),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            ],
+                  ],
+                ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
 
+  void _showEditTesterDialog(
+    BuildContext context,
+    DashboardState state,
+    TesterViewModel tester,
+  ) {
+    final platformCtrl = TextEditingController(
+        text: tester.platform == 'unknown' ? '' : tester.platform);
+    final modelCtrl = TextEditingController(
+        text: tester.deviceModel == 'unknown' ? '' : tester.deviceModel);
+    final osCtrl = TextEditingController(
+        text: tester.osVersion == 'unknown' ? '' : tester.osVersion);
+    final appCtrl = TextEditingController(
+        text: tester.appVersion == 'unknown' ? '' : tester.appVersion);
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.edit_rounded, color: AppTheme.primaryColor),
+            const SizedBox(width: 10),
+            Text('Edit Info (${tester.testerId})'),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: platformCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Platform (e.g. android, ios, web)',
+                    hintText: 'android',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: modelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Device Model (e.g. Pixel 7, Galaxy S23)',
+                    hintText: 'Google Pixel 7',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: osCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'OS Version (e.g. Android 14)',
+                    hintText: 'Android 14',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: appCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'App Version (e.g. 1.0.0 (1))',
+                    hintText: '1.0.0 (1)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final success = await state.updateTesterMetadata(
+                testerId: tester.testerId,
+                platform: platformCtrl.text.trim(),
+                deviceModel: modelCtrl.text.trim(),
+                osVersion: osCtrl.text.trim(),
+                appVersion: appCtrl.text.trim(),
+              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success
+                        ? 'Updated ${tester.testerId} metadata successfully!'
+                        : 'Failed to update tester metadata.'),
+                    backgroundColor:
+                        success ? AppTheme.successColor : AppTheme.dangerColor,
+                  ),
+                );
+              }
+            },
+            child: const Text('Save'),
+          ),
         ],
       ),
     );

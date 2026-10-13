@@ -25,11 +25,19 @@ class TesterTrackOptions {
   /// or responds to system permission dialogues. Defaults to 15 seconds.
   final Duration inactivityDebounce;
 
+  /// Inactivity duration threshold after which returning to the app starts a brand new session.
+  ///
+  /// If the user resumes the app within this duration, the existing session is continued
+  /// (excluding background idle time from duration).
+  /// Defaults to 30 minutes (industry standard, like Google Analytics / GA4).
+  final Duration sessionTimeout;
+
   const TesterTrackOptions({
     this.debugLogging = false,
     this.localHeartbeatInterval =
         TrackerConstants.defaultLocalHeartbeatInterval,
     this.firestoreSyncInterval = TrackerConstants.defaultFirestoreSyncInterval,
     this.inactivityDebounce = TrackerConstants.defaultInactivityDebounce,
+    this.sessionTimeout = TrackerConstants.defaultSessionTimeout,
   });
 }

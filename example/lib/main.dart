@@ -1,23 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:tester_track/tester_track.dart';
+import 'package:tester_track_example/secondary_firebase_options_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize TesterTrack with secondary Firebase project options.
   // Replace these with your actual secondary Firebase project options.
-  const secondaryFirebaseOptions = FirebaseOptions(
-    apiKey: "YOUR_FIREBASE_API_KEY_HERE",
-    projectId: "your-tester-track-project",
-    storageBucket: "your-tester-track-project.firebasestorage.app",
-    messagingSenderId: "123456789012",
-    appId: "1:123456789012:android:abcdef1234567890",
+  final secondaryFirebaseOptions = FirebaseOptions(
+    apiKey: TesterTrackEnv.apiKey, // "YOUR_FIREBASE_API_KEY_HERE",
+    projectId: TesterTrackEnv.projectId, //"your-tester-track-project",
+    storageBucket: TesterTrackEnv
+        .storageBucket, // "your-tester-track-project.firebasestorage.app",
+    messagingSenderId: TesterTrackEnv.messagingSenderId, // "123456789012",
+    appId: TesterTrackEnv.appId, // "1:123456789012:android:abcdef1234567890",
   );
 
   // Initialize tracking with an optional explicit tester ID.
   await TesterTrack.initialize(
     firebaseOptions: secondaryFirebaseOptions,
-    testerId: 'T001',
+    testerId: 'T002',
     options: const TesterTrackOptions(
       debugLogging: true,
     ),

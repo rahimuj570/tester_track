@@ -12,7 +12,10 @@ class SessionViewModel {
   final String activeDate;
   final String appVersion;
   final String platform;
+  final String deviceModel;
+  final String osVersion;
   final bool isFinalized;
+  final DateTime? updatedAt;
 
   const SessionViewModel({
     required this.sessionId,
@@ -24,8 +27,42 @@ class SessionViewModel {
     required this.activeDate,
     required this.appVersion,
     required this.platform,
+    this.deviceModel = 'unknown',
+    this.osVersion = 'unknown',
     required this.isFinalized,
+    this.updatedAt,
   });
+
+  /// The most recent activity timestamp for this session.
+  /// Falls back to `startedAt + durationSeconds` if `updatedAt` is null.
+  DateTime get lastActiveAt {
+    if (updatedAt != null) return updatedAt!;
+    return startedAt.add(Duration(seconds: durationSeconds));
+  }
+
+  /// Default threshold beyond which an unfinalized session is considered stale.
+  static const Duration defaultActiveTimeout = Duration(minutes: 2);
+
+  /// Whether this session has active heartbeat within [timeout] (default 2 mins).
+  bool isCurrentlyActive({
+    Duration timeout = defaultActiveTimeout,
+    DateTime? now,
+  }) {
+    if (isFinalized) return false;
+    final currentTime = (now ?? DateTime.now()).toUtc();
+    return currentTime.difference(lastActiveAt) <= timeout;
+  }
+
+  /// User-friendly status label: "Active Now" if recently active, else "Completed".
+  String get statusText => isCurrentlyActive() ? 'Active Now' : 'Completed';
+
+  /// Whether this session is unfinalized but has timed out (stale / closed / interrupted).
+  bool isStale({
+    Duration timeout = defaultActiveTimeout,
+    DateTime? now,
+  }) {
+    return !isFinalized && !isCurrentlyActive(timeout: timeout, now: now);
+  }
 
   /// Formatted duration string (e.g. "12m 30s" or "45s").
   String get formattedDuration {
@@ -64,6 +101,16 @@ class SessionViewModel {
       } catch (_) {}
     }
 
+    final dynamic rawUpdated = map['updatedAt'];
+    DateTime? updated;
+    if (rawUpdated is String) {
+      updated = DateTime.tryParse(rawUpdated)?.toUtc();
+    } else if (rawUpdated != null) {
+      try {
+        updated = (rawUpdated.toDate() as DateTime).toUtc();
+      } catch (_) {}
+    }
+
     return SessionViewModel(
       sessionId: map['sessionId'] as String? ?? docId,
       testerId: map['testerId'] as String? ?? '',
@@ -74,7 +121,10 @@ class SessionViewModel {
       activeDate: map['activeDate'] as String? ?? '',
       appVersion: map['appVersion'] as String? ?? 'unknown',
       platform: map['platform'] as String? ?? 'unknown',
+      deviceModel: map['deviceModel'] as String? ?? 'unknown',
+      osVersion: map['osVersion'] as String? ?? 'unknown',
       isFinalized: map['isFinalized'] as bool? ?? false,
+      updatedAt: updated,
     );
   }
 }

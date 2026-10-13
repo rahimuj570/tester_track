@@ -77,6 +77,18 @@ class DashboardState extends ChangeNotifier {
   int get totalInProgressSessionsCount =>
       _testers.fold<int>(0, (sum, t) => sum + t.inProgressSessionCount);
 
+  int get totalActiveSessionsCount =>
+      _testers.fold<int>(0, (sum, t) => sum + t.activeSessionCount);
+
+  int get totalStaleSessionsCount =>
+      _testers.fold<int>(0, (sum, t) => sum + t.staleSessionCount);
+
+  int get activeTestersNowCount =>
+      _testers.where((t) => t.isCurrentlyActive).length;
+
+  int get totalActiveUsageSeconds =>
+      _testers.fold<int>(0, (sum, t) => sum + t.activeUsageSeconds);
+
   int get totalRecordedSessionsCount =>
       _testers.fold<int>(0, (sum, t) => sum + t.totalRecordedSessions);
 
@@ -108,6 +120,8 @@ class DashboardState extends ChangeNotifier {
 
   String get formattedInProgressUsage =>
       _formatSeconds(totalInProgressUsageSeconds);
+
+  String get formattedActiveUsage => _formatSeconds(totalActiveUsageSeconds);
 
   String get formattedTotalTodayUsage =>
       _formatSeconds(totalTodayUsageSeconds);
@@ -489,6 +503,71 @@ class DashboardState extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Automatically finalizes all stale sessions (heartbeat > 5 mins) across testers.
+  Future<int> autoFinalizeStaleSessions({Duration timeout = const Duration(minutes: 5)}) async {
+    if (_activeProject == null) return 0;
+
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final count = await firestoreService.autoFinalizeStaleSessions(
+        _activeProject!,
+        timeout: timeout,
+      );
+      if (count > 0) {
+        await refreshDashboardData();
+      }
+      return count;
+    } catch (e) {
+      _errorMessage = 'Failed to auto-finalize stale sessions: $e';
+      return 0;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Updates metadata for a specific tester profile and refreshes local state.
+  Future<bool> updateTesterMetadata({
+    required String testerId,
+    String? platform,
+    String? deviceModel,
+    String? osVersion,
+    String? appVersion,
+  }) async {
+    if (_activeProject == null) return false;
+
+    try {
+      final success = await firestoreService.updateTesterMetadata(
+        _activeProject!,
+        testerId: testerId,
+        platform: platform,
+        deviceModel: deviceModel,
+        osVersion: osVersion,
+        appVersion: appVersion,
+      );
+
+      if (success) {
+        if (_selectedTester?.testerId == testerId) {
+          _selectedTester = _selectedTester!.copyWith(
+            platform: platform,
+            deviceModel: deviceModel,
+            osVersion: osVersion,
+            appVersion: appVersion,
+          );
+        }
+        await refreshDashboardData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      _errorMessage = 'Failed to update tester info: $e';
+      notifyListeners();
+      return false;
     }
   }
 

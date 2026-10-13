@@ -161,10 +161,39 @@ class DashboardFirestoreService {
         }
       }
 
-      final inProgressCount = inProgressSnap.docs.length;
-      var inProgressDur = 0;
+      final nowUtc = DateTime.now().toUtc();
+      var activeCount = 0;
+      var activeDur = 0;
+      var staleCount = 0;
+      var staleDur = 0;
+
       for (final doc in inProgressSnap.docs) {
-        inProgressDur += (doc.data()['durationSeconds'] as num?)?.toInt() ?? 0;
+        final data = doc.data();
+        final dur = (data['durationSeconds'] as num?)?.toInt() ?? 0;
+
+        DateTime? parseTime(dynamic val) {
+          if (val is String) return DateTime.tryParse(val)?.toUtc();
+          if (val != null) {
+            try {
+              return (val.toDate() as DateTime).toUtc();
+            } catch (_) {}
+          }
+          return null;
+        }
+
+        final updated = parseTime(data['updatedAt']);
+        final started = parseTime(data['startedAt']) ?? nowUtc;
+        final lastActive = updated ?? started.add(Duration(seconds: dur));
+        final isRecent =
+            nowUtc.difference(lastActive) <= SessionViewModel.defaultActiveTimeout;
+
+        if (isRecent) {
+          activeCount++;
+          activeDur += dur;
+        } else {
+          staleCount++;
+          staleDur += dur;
+        }
       }
 
       final todayCount = todayDocs.length;
@@ -182,9 +211,112 @@ class DashboardFirestoreService {
           hasRecentDateToday ||
           hasLastSeenToday;
 
+      // Recover missing or 'unknown' platform/device metadata from session documents if needed
+      var recPlatform = t.platform;
+      var recDeviceModel = t.deviceModel;
+      var recOsVersion = t.osVersion;
+      var recAppVersion = t.appVersion;
+
+      bool isUnknownVal(String v) =>
+          v.trim().isEmpty || v.trim().toLowerCase() == 'unknown';
+
+      if (isUnknownVal(recPlatform) ||
+          isUnknownVal(recDeviceModel) ||
+          isUnknownVal(recOsVersion) ||
+          isUnknownVal(recAppVersion)) {
+        final candidateDocs = <Map<String, dynamic>>[
+          ...todayDocs.values,
+          for (final doc in inProgressSnap.docs) doc.data(),
+        ];
+
+        // If candidates are empty or still missing fields, query recent sessions for this tester
+        if (candidateDocs.isEmpty ||
+            (isUnknownVal(recPlatform) &&
+                isUnknownVal(recDeviceModel) &&
+                isUnknownVal(recAppVersion))) {
+          try {
+            final recentSnap = await firestore
+                .collection('testers')
+                .doc(t.testerId)
+                .collection('sessions')
+                .orderBy('startedAt', descending: true)
+                .limit(3)
+                .get();
+            for (final doc in recentSnap.docs) {
+              candidateDocs.add(doc.data());
+            }
+          } catch (_) {}
+        }
+
+        for (final data in candidateDocs) {
+          final p = data['platform']?.toString();
+          final m = data['deviceModel']?.toString();
+          final os = data['osVersion']?.toString();
+          final v = data['appVersion']?.toString();
+
+          if (isUnknownVal(recPlatform) && p != null && !isUnknownVal(p)) {
+            recPlatform = p;
+          }
+          if (isUnknownVal(recDeviceModel) && m != null && !isUnknownVal(m)) {
+            recDeviceModel = m;
+          }
+          if (isUnknownVal(recOsVersion) && os != null && !isUnknownVal(os)) {
+            recOsVersion = os;
+          }
+          if (isUnknownVal(recAppVersion) && v != null && !isUnknownVal(v)) {
+            recAppVersion = v;
+          }
+        }
+
+        // Friendly device model fallback if model was not recorded but platform is known
+        if (isUnknownVal(recDeviceModel) && !isUnknownVal(recPlatform)) {
+          final pLower = recPlatform.toLowerCase();
+          if (pLower.contains('android')) {
+            recDeviceModel = 'Android Device';
+          } else if (pLower.contains('ios') ||
+              pLower.contains('iphone') ||
+              pLower.contains('ipad')) {
+            recDeviceModel = 'iOS Device';
+          } else if (pLower.contains('web')) {
+            recDeviceModel = 'Web Client';
+          } else if (pLower.contains('windows')) {
+            recDeviceModel = 'Windows PC';
+          } else if (pLower.contains('macos') || pLower.contains('mac')) {
+            recDeviceModel = 'Mac';
+          }
+        }
+
+        // Heal the Firestore document in the background if we recovered missing metadata
+        final hasRecoveredChanges =
+            (!isUnknownVal(recPlatform) && recPlatform != t.platform) ||
+                (!isUnknownVal(recDeviceModel) &&
+                    recDeviceModel != t.deviceModel) ||
+                (!isUnknownVal(recAppVersion) && recAppVersion != t.appVersion);
+
+        if (hasRecoveredChanges) {
+          try {
+            firestore.collection('testers').doc(t.testerId).set({
+              if (!isUnknownVal(recPlatform)) 'platform': recPlatform,
+              if (!isUnknownVal(recDeviceModel)) 'deviceModel': recDeviceModel,
+              if (!isUnknownVal(recOsVersion)) 'osVersion': recOsVersion,
+              if (!isUnknownVal(recAppVersion)) 'appVersion': recAppVersion,
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true)).ignore();
+          } catch (_) {}
+        }
+      }
+
       return t.copyWith(
-        inProgressSessionCount: inProgressCount,
-        inProgressUsageSeconds: inProgressDur,
+        platform: recPlatform,
+        deviceModel: recDeviceModel,
+        osVersion: recOsVersion,
+        appVersion: recAppVersion,
+        inProgressSessionCount: activeCount + staleCount,
+        inProgressUsageSeconds: activeDur + staleDur,
+        activeSessionCount: activeCount,
+        activeUsageSeconds: activeDur,
+        staleSessionCount: staleCount,
+        staleUsageSeconds: staleDur,
         todaySessionsCount: todayCount,
         todayUsageSeconds: todayDur,
         isUsedToday: isUsedToday,
@@ -192,6 +324,108 @@ class DashboardFirestoreService {
     } catch (_) {
       return t;
     }
+  }
+
+  /// Updates metadata for a specific tester profile document.
+  Future<bool> updateTesterMetadata(
+    FirebaseProjectConfig config, {
+    required String testerId,
+    String? platform,
+    String? deviceModel,
+    String? osVersion,
+    String? appVersion,
+  }) async {
+    try {
+      final firestore = await _firebaseManager.getFirestore(config);
+      final updateData = <String, dynamic>{
+        if (platform != null && platform.trim().isNotEmpty)
+          'platform': platform.trim(),
+        if (deviceModel != null && deviceModel.trim().isNotEmpty)
+          'deviceModel': deviceModel.trim(),
+        if (osVersion != null && osVersion.trim().isNotEmpty)
+          'osVersion': osVersion.trim(),
+        if (appVersion != null && appVersion.trim().isNotEmpty)
+          'appVersion': appVersion.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (updateData.isNotEmpty) {
+        await firestore
+            .collection('testers')
+            .doc(testerId)
+            .set(updateData, SetOptions(merge: true));
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Automatically finalizes unfinalized sessions whose heartbeat is older than [timeout]
+  /// for a specific tester or across all testers, updating cumulative totals.
+  Future<int> autoFinalizeStaleSessions(
+    FirebaseProjectConfig config, {
+    String? testerId,
+    Duration timeout = const Duration(minutes: 5),
+  }) async {
+    final firestore = await _firebaseManager.getFirestore(config);
+    final nowUtc = DateTime.now().toUtc();
+    var finalizedCount = 0;
+
+    final testerIds = <String>[];
+    if (testerId != null) {
+      testerIds.add(testerId);
+    } else {
+      final testersSnap = await firestore.collection('testers').get();
+      for (final d in testersSnap.docs) {
+        testerIds.add(d.id);
+      }
+    }
+
+    DateTime? parseTime(dynamic val) {
+      if (val is String) return DateTime.tryParse(val)?.toUtc();
+      if (val != null) {
+        try {
+          return (val.toDate() as DateTime).toUtc();
+        } catch (_) {}
+      }
+      return null;
+    }
+
+    for (final id in testerIds) {
+      try {
+        final unfinalizedSnap = await firestore
+            .collection('testers')
+            .doc(id)
+            .collection('sessions')
+            .where('isFinalized', isEqualTo: false)
+            .get();
+
+        for (final sDoc in unfinalizedSnap.docs) {
+          final data = sDoc.data();
+          final dur = (data['durationSeconds'] as num?)?.toInt() ?? 0;
+          final updated = parseTime(data['updatedAt']);
+          final started = parseTime(data['startedAt']) ?? nowUtc;
+          final lastActive = updated ?? started.add(Duration(seconds: dur));
+
+          if (nowUtc.difference(lastActive) > timeout) {
+            final activeDate = data['activeDate'] as String? ??
+                '${started.year.toString().padLeft(4, '0')}-${started.month.toString().padLeft(2, '0')}-${started.day.toString().padLeft(2, '0')}';
+            await finalizeSession(
+              config,
+              testerId: id,
+              sessionId: sDoc.id,
+              endedAt: lastActive,
+              durationSeconds: dur,
+              activeDate: activeDate,
+            );
+            finalizedCount++;
+          }
+        }
+      } catch (_) {}
+    }
+
+    return finalizedCount;
   }
 
   /// Fetches sessions recorded for a specific tester from `testers/{testerId}/sessions`.

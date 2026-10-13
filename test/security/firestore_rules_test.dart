@@ -57,9 +57,11 @@ class SecurityRulesEvaluator {
   }) {
     if (!isAnonymousTester()) return false;
     final authUid = auth!['uid'];
-    return resourceData['authUid'] == authUid &&
-        requestResourceData['authUid'] == resourceData['authUid'] &&
-        requestResourceData['testerId'] == resourceData['testerId'];
+    final canHealOrOwn = resourceData['authUid'] == null ||
+        resourceData['authUid'] == authUid;
+    return canHealOrOwn &&
+        requestResourceData['authUid'] == authUid &&
+        requestResourceData['testerId'] == testerId;
   }
 
   bool canReadTester({

@@ -104,20 +104,20 @@ class _DashboardShellState extends State<DashboardShell> {
                       label: Text('Overview'),
                     ),
                     NavigationRailDestination(
-                      icon: state.totalInProgressSessionsCount > 0
+                      icon: state.totalActiveSessionsCount > 0
                           ? Badge(
                               label: Text(
-                                  '${state.totalInProgressSessionsCount}'),
+                                  '${state.totalActiveSessionsCount}'),
                               backgroundColor: AppTheme.warningColor,
                               textColor: Colors.black,
                               child:
                                   const Icon(Icons.people_outline_rounded),
                             )
                           : const Icon(Icons.people_outline_rounded),
-                      selectedIcon: state.totalInProgressSessionsCount > 0
+                      selectedIcon: state.totalActiveSessionsCount > 0
                           ? Badge(
                               label: Text(
-                                  '${state.totalInProgressSessionsCount}'),
+                                  '${state.totalActiveSessionsCount}'),
                               backgroundColor: AppTheme.warningColor,
                               textColor: Colors.black,
                               child: const Icon(Icons.people_rounded,
@@ -125,8 +125,8 @@ class _DashboardShellState extends State<DashboardShell> {
                             )
                           : const Icon(Icons.people_rounded,
                               color: AppTheme.primaryColor),
-                      label: Text(state.totalInProgressSessionsCount > 0
-                          ? 'Testers (${state.totalInProgressSessionsCount} active)'
+                      label: Text(state.totalActiveSessionsCount > 0
+                          ? 'Testers (${state.totalActiveSessionsCount} active)'
                           : 'Testers & Sessions'),
                     ),
                     const NavigationRailDestination(
@@ -162,10 +162,10 @@ class _DashboardShellState extends State<DashboardShell> {
                       label: 'Overview',
                     ),
                     BottomNavigationBarItem(
-                      icon: state.totalInProgressSessionsCount > 0
+                      icon: state.totalActiveSessionsCount > 0
                           ? Badge(
                               label: Text(
-                                  '${state.totalInProgressSessionsCount}'),
+                                  '${state.totalActiveSessionsCount}'),
                               backgroundColor: AppTheme.warningColor,
                               textColor: Colors.black,
                               child:

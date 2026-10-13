@@ -10,6 +10,7 @@ class SessionState {
   final DateTime startedAt;
   final DateTime lastHeartbeatAt;
   final int accumulatedDurationSeconds;
+  final int syncedDurationSeconds;
   final String appVersion;
   final String platform;
   final bool isFinalized;
@@ -21,6 +22,7 @@ class SessionState {
     required this.startedAt,
     required this.lastHeartbeatAt,
     required this.accumulatedDurationSeconds,
+    this.syncedDurationSeconds = 0,
     required this.appVersion,
     required this.platform,
     required this.isFinalized,
@@ -45,6 +47,7 @@ class SessionState {
     DateTime? startedAt,
     DateTime? lastHeartbeatAt,
     int? accumulatedDurationSeconds,
+    int? syncedDurationSeconds,
     String? appVersion,
     String? platform,
     bool? isFinalized,
@@ -57,6 +60,8 @@ class SessionState {
       lastHeartbeatAt: lastHeartbeatAt ?? this.lastHeartbeatAt,
       accumulatedDurationSeconds:
           accumulatedDurationSeconds ?? this.accumulatedDurationSeconds,
+      syncedDurationSeconds:
+          syncedDurationSeconds ?? this.syncedDurationSeconds,
       appVersion: appVersion ?? this.appVersion,
       platform: platform ?? this.platform,
       isFinalized: isFinalized ?? this.isFinalized,
@@ -71,6 +76,7 @@ class SessionState {
       'startedAt': startedAt.toUtc().toIso8601String(),
       'lastHeartbeatAt': lastHeartbeatAt.toUtc().toIso8601String(),
       'accumulatedDurationSeconds': accumulatedDurationSeconds,
+      'syncedDurationSeconds': syncedDurationSeconds,
       'appVersion': appVersion,
       'platform': platform,
       'isFinalized': isFinalized,
@@ -101,6 +107,8 @@ class SessionState {
       startedAt: started,
       lastHeartbeatAt: lastHb,
       accumulatedDurationSeconds: rawDuration >= 0 ? rawDuration : 0,
+      syncedDurationSeconds:
+          (map['syncedDurationSeconds'] as num?)?.toInt() ?? 0,
       appVersion: map['appVersion'] as String? ?? 'unknown',
       platform: map['platform'] as String? ?? 'unknown',
       isFinalized: map['isFinalized'] as bool? ?? false,
@@ -122,6 +130,7 @@ class SessionState {
           startedAt == other.startedAt &&
           lastHeartbeatAt == other.lastHeartbeatAt &&
           accumulatedDurationSeconds == other.accumulatedDurationSeconds &&
+          syncedDurationSeconds == other.syncedDurationSeconds &&
           appVersion == other.appVersion &&
           platform == other.platform &&
           isFinalized == other.isFinalized;
@@ -134,6 +143,7 @@ class SessionState {
       startedAt.hashCode ^
       lastHeartbeatAt.hashCode ^
       accumulatedDurationSeconds.hashCode ^
+      syncedDurationSeconds.hashCode ^
       appVersion.hashCode ^
       platform.hashCode ^
       isFinalized.hashCode;

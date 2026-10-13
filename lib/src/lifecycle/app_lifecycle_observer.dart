@@ -49,9 +49,11 @@ class AppLifecycleObserver with WidgetsBindingObserver {
           break;
         case AppLifecycleState.inactive:
         case AppLifecycleState.paused:
-        case AppLifecycleState.detached:
         case AppLifecycleState.hidden:
           sessionManager.onAppPauseOrInactive();
+          break;
+        case AppLifecycleState.detached:
+          sessionManager.onAppDetached();
           break;
       }
     }, operationName: 'AppLifecycleObserver.didChangeAppLifecycleState');

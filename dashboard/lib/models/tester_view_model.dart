@@ -17,6 +17,10 @@ class TesterViewModel {
   final List<String> recentActiveDates;
   final int inProgressSessionCount;
   final int inProgressUsageSeconds;
+  final int activeSessionCount;
+  final int activeUsageSeconds;
+  final int staleSessionCount;
+  final int staleUsageSeconds;
   final bool isUsedToday;
   final int todayUsageSeconds;
   final int todaySessionsCount;
@@ -36,10 +40,20 @@ class TesterViewModel {
     required this.recentActiveDates,
     this.inProgressSessionCount = 0,
     this.inProgressUsageSeconds = 0,
+    this.activeSessionCount = 0,
+    this.activeUsageSeconds = 0,
+    this.staleSessionCount = 0,
+    this.staleUsageSeconds = 0,
     this.isUsedToday = false,
     this.todayUsageSeconds = 0,
     this.todaySessionsCount = 0,
   });
+
+  /// Whether the tester has an active session with fresh heartbeat right now.
+  bool get isCurrentlyActive => activeSessionCount > 0;
+
+  /// Whether the tester has unfinalized sessions whose heartbeats have expired.
+  bool get hasStaleSessions => staleSessionCount > 0;
 
   /// Total recorded sessions including finalized and in-progress.
   int get totalRecordedSessions => sessionCount + inProgressSessionCount;
@@ -161,6 +175,10 @@ class TesterViewModel {
     List<String>? recentActiveDates,
     int? inProgressSessionCount,
     int? inProgressUsageSeconds,
+    int? activeSessionCount,
+    int? activeUsageSeconds,
+    int? staleSessionCount,
+    int? staleUsageSeconds,
     bool? isUsedToday,
     int? todayUsageSeconds,
     int? todaySessionsCount,
@@ -182,6 +200,10 @@ class TesterViewModel {
           inProgressSessionCount ?? this.inProgressSessionCount,
       inProgressUsageSeconds:
           inProgressUsageSeconds ?? this.inProgressUsageSeconds,
+      activeSessionCount: activeSessionCount ?? this.activeSessionCount,
+      activeUsageSeconds: activeUsageSeconds ?? this.activeUsageSeconds,
+      staleSessionCount: staleSessionCount ?? this.staleSessionCount,
+      staleUsageSeconds: staleUsageSeconds ?? this.staleUsageSeconds,
       isUsedToday: isUsedToday ?? this.isUsedToday,
       todayUsageSeconds: todayUsageSeconds ?? this.todayUsageSeconds,
       todaySessionsCount: todaySessionsCount ?? this.todaySessionsCount,

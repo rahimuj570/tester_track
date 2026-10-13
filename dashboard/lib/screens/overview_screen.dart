@@ -203,22 +203,24 @@ class OverviewScreen extends StatelessWidget {
                   ),
                   StatCard(
                     title: 'Total Sessions',
-                    value: state.totalInProgressSessionsCount > 0
+                    value: state.totalActiveSessionsCount > 0
                         ? '${state.totalRecordedSessionsCount}'
                         : '${state.totalSessionsCount}',
-                    subtitle: state.totalInProgressSessionsCount > 0
-                        ? '${state.totalSessionsCount} Finalized · ${state.totalInProgressSessionsCount} Active'
-                        : 'Recorded foreground sessions',
+                    subtitle: state.totalActiveSessionsCount > 0
+                        ? '${state.totalSessionsCount} Finalized · ${state.totalActiveSessionsCount} Active'
+                        : state.totalStaleSessionsCount > 0
+                            ? '${state.totalSessionsCount} Finalized (${state.totalStaleSessionsCount} unfinalized)'
+                            : 'Recorded foreground sessions',
                     icon: Icons.timer_outlined,
                     iconColor: const Color(0xFF8B5CF6),
                   ),
                   StatCard(
                     title: 'Total Foreground Time',
-                    value: state.totalInProgressUsageSeconds > 0
+                    value: state.totalActiveUsageSeconds > 0
                         ? state.formattedTotalObservedUsage
                         : state.formattedTotalUsage,
-                    subtitle: state.totalInProgressUsageSeconds > 0
-                        ? '${state.formattedTotalUsage} Finalized · ${state.formattedInProgressUsage} Active'
+                    subtitle: state.totalActiveUsageSeconds > 0
+                        ? '${state.formattedTotalUsage} Finalized · ${state.formattedActiveUsage} Active'
                         : 'Observed active time only',
                     icon: Icons.hourglass_top_rounded,
                     iconColor: AppTheme.successColor,
@@ -425,9 +427,7 @@ class OverviewScreen extends StatelessWidget {
                           backgroundColor:
                               AppTheme.primaryColor.withValues(alpha: 0.15),
                           child: Icon(
-                            t.platform.toLowerCase().contains('ios')
-                                ? Icons.phone_iphone_rounded
-                                : Icons.android_rounded,
+                            _getPlatformIcon(t.platform),
                             color: AppTheme.primaryColor,
                             size: 18,
                           ),
@@ -448,7 +448,7 @@ class OverviewScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              t.inProgressSessionCount > 0
+                              t.isCurrentlyActive
                                   ? '${t.totalRecordedSessions} sessions (${t.formattedTotalUsageTime})'
                                   : '${t.sessionCount} sessions (${t.formattedUsageTime})',
                               style: const TextStyle(
@@ -516,4 +516,16 @@ class _PlatformRow extends StatelessWidget {
       ],
     );
   }
+}
+
+IconData _getPlatformIcon(String platform) {
+  final p = platform.toLowerCase();
+  if (p.contains('ios') || p.contains('iphone') || p.contains('ipad')) {
+    return Icons.phone_iphone_rounded;
+  } else if (p.contains('web')) {
+    return Icons.language_rounded;
+  } else if (p.contains('win') || p.contains('mac') || p.contains('linux')) {
+    return Icons.laptop_chromebook_rounded;
+  }
+  return Icons.android_rounded;
 }

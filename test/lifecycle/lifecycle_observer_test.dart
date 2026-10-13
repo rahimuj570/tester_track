@@ -124,5 +124,20 @@ void main() {
       observer.didChangeAppLifecycleState(AppLifecycleState.resumed);
       expect(sessionManager.isTracking, isTrue);
     });
+
+    test('detached state immediately finalizes active session without debounce',
+        () async {
+      observer.attach();
+
+      // 1. Resumed state starts session
+      observer.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(sessionManager.isTracking, isTrue);
+
+      // 2. Detached state immediately finalizes session
+      observer.didChangeAppLifecycleState(AppLifecycleState.detached);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(sessionManager.isTracking, isFalse);
+    });
   });
 }

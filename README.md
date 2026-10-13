@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pub.dev/packages/tester_track"><img src="https://img.shields.io/badge/pub-v0.0.1-blue.svg" alt="pub package"></a>
+  <a href="https://pub.dev/packages/tester_track"><img src="https://img.shields.io/badge/pub-v0.0.3-blue.svg" alt="pub package"></a>
   <a href="https://flutter.dev"><img src="https://img.shields.io/badge/platform-flutter%20%7C%20android%20%7C%20ios-blue" alt="Flutter Platform"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://firebase.google.com/"><img src="https://img.shields.io/badge/firebase-firestore%20%26%20auth-orange.svg" alt="Firebase Powered"></a>
@@ -19,7 +19,10 @@ All analytics data and remote configuration live strictly inside your own second
 
 - [Why TesterTrack?](#-why-testertrack)
 - [Key Features](#-key-features)
-- [How It Works (Secondary Firebase App)](#-how-it-works-secondary-firebase-app)
+- [How It Works](#-how-it-works)
+  - [Secondary Firebase App Isolation](#1-secondary-firebase-app-zero-config-collision)
+  - [Session Lifecycle & 30-Minute Inactivity Window](#2-session-lifecycle--inactivity-window-30-minute-standard)
+  - [Firebase Free Tier Optimization](#3-firebase-free-tier-optimization-spark-plan)
 - [Quick Start Guide](#-quick-start-guide)
   - [1. Add Dependency](#1-add-dependency)
   - [2. Firebase Project Setup](#2-firebase-project-setup)
@@ -29,6 +32,7 @@ All analytics data and remote configuration live strictly inside your own second
 - [Companion Web Dashboard](#-companion-web-dashboard)
 - [Remote Configuration & Kill Switch](#-remote-configuration--kill-switch)
 - [API Reference](#-api-reference)
+- [Troubleshooting & Common Errors](#-troubleshooting--common-errors)
 - [FAQ & Architecture Insights](#-faq--architecture-insights)
 - [Privacy & Google Play Compliance](#-privacy--google-play-compliance)
 - [License](#-license)
@@ -59,7 +63,9 @@ Traditional analytics tools (like Google Analytics or Mixpanel) are often noisy,
 
 ---
 
-## 🏗️ How It Works (Secondary Firebase App)
+## 🏗️ How It Works
+
+### 1. Secondary Firebase App (Zero Config Collision)
 
 You **do not** need to download or merge a `google-services.json` or `GoogleService-Info.plist` file into your mobile app!
 
@@ -89,6 +95,57 @@ This guarantees:
 
 ---
 
+### 2. Session Lifecycle & Inactivity Window (30-Minute Standard)
+
+Following industry analytics standards (like Google Analytics 4 / GA4), TesterTrack seamlessly handles real-world mobile app usage:
+
+```mermaid
+stateDiagram-v2
+    [*] --> ActiveForeground: App Opened
+    ActiveForeground --> PausedBackground: Minimized / Switched Apps
+    
+    state PausedBackground {
+        [*] --> InactivityTimer: Start 30m Window
+        InactivityTimer --> ResumedWithin30m: Reopened <= 30m
+        InactivityTimer --> ExpiredAfter30m: Inactive > 30m
+    }
+    
+    ResumedWithin30m --> ActiveForeground: Continues Same Session (0s background time added)
+    ExpiredAfter30m --> FinalizedSession: Finalized in Firestore (isFinalized = true)
+    FinalizedSession --> ActiveForeground: Next Open Starts New Session
+```
+
+- **Instant Flush on App Minimize / Background**:
+  - The exact moment a tester minimizes or backgrounds the app (even after just 1 minute of use), all accumulated foreground duration is **instantly synced to Firestore**.
+  - Your companion dashboard immediately reflects the tester's latest usage, active date, and last-seen timestamp without waiting for background timers or next app launches.
+  - Even if the Android OS kills the background process seconds later, the tester's usage data is already safely stored in Firestore.
+- **App Minimized or Switched (<= 30 minutes)**:
+  - If a tester temporarily minimizes the app, switches to another app, checks a notification, or copies an OTP code and returns within 30 minutes:
+    - The **exact same session continues** with the original session ID.
+    - **Background idle time is strictly excluded**: Wall-clock background time is never added to the duration. Only active foreground seconds count.
+    - Upon next pause, only the new foreground delta is synced, preventing duplicate counts.
+- **App Inactive (> 30 minutes)**:
+  - If the tester does not return within 30 minutes, the session is cleanly finalized in Firestore (`isFinalized: true`) with its true observed foreground duration.
+  - Reopening the app after 30 minutes starts a brand-new session.
+- **App Killed / Swiped Away (Cold Starts)**:
+  - If the user swipes away the app from recent tasks or the OS terminates the process:
+    - TesterTrack flushes the active duration and saves a local recovery checkpoint in `SharedPreferences`.
+    - **Reopened <= 30m**: Seamlessly recovers and resumes the existing session.
+    - **Reopened > 30m**: Finalizes the previous session and starts a new session.
+
+---
+
+### 3. Firebase Free Tier Optimization (Spark Plan)
+
+TesterTrack is engineered to operate comfortably within Firebase's Spark Free Tier (20,000 writes/day):
+
+- **Instant Flush on Pause**: When the app is minimized, 1 write flushes the session duration and updates tester aggregates.
+- **In-memory local heartbeats**: Monitors foreground elapsed time every 15 seconds locally without making any network requests.
+- **5-minute periodic sync**: During continuous, uninterrupted foreground use, progress flushes to Firestore once every 5 minutes.
+- **Ultra-low quota footprint**: A typical session with multiple pauses uses **only ~2–4 Firestore writes total** (1 at start, 1 per pause, 1 at finalization). For 20 testers using the app multiple times daily, this consumes ~150–200 writes/day—less than **1%** of your daily free tier quota!
+
+---
+
 ## 🚀 Quick Start Guide
 
 ### 1. Add Dependency
@@ -97,7 +154,7 @@ Add `tester_track` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  tester_track: ^0.0.1
+  tester_track: ^0.0.3
 ```
 
 Or run:
@@ -123,6 +180,12 @@ flutter pub add tester_track
      - `messagingSenderId`
      - `projectId`
      - `storageBucket`
+
+> 📱 **Android Permission Requirement**: Ensure your app has internet access enabled in `android/app/src/main/AndroidManifest.xml` (outside the `<application>` tag):
+> ```xml
+> <uses-permission android:name="android.permission.INTERNET"/>
+> <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+> ```
 
 ---
 
@@ -295,12 +358,82 @@ When your Google Play 14-day closed testing is complete:
 
 ```dart
 const TesterTrackOptions({
+  Duration sessionTimeout = const Duration(minutes: 30),
   Duration localHeartbeatInterval = const Duration(seconds: 15),
   Duration firestoreSyncInterval = const Duration(minutes: 5),
   Duration inactivityDebounce = const Duration(seconds: 15),
   bool debugLogging = false,
 });
 ```
+
+| Option | Default | Description |
+|---|---|---|
+| `sessionTimeout` | `30 minutes` | Inactivity window. Resuming the app within 30 minutes seamlessly continues the existing session (background time is excluded). Exceeding 30 minutes starts a new session. |
+| `localHeartbeatInterval` | `15 seconds` | Local heartbeat timer for memory tracking (zero Firestore network overhead). |
+| `firestoreSyncInterval` | `5 minutes` | Periodic Firestore duration delta flush during continuous foreground use. |
+| `inactivityDebounce` | `15 seconds` | Legacy alias for `sessionTimeout`. |
+| `debugLogging` | `false` | Enables internal diagnostic console logging. |
+
+---
+
+## 🔧 Troubleshooting & Common Errors
+
+### 1. `W/ManagedChannelImpl: Failed to resolve name` or `[cloud_firestore/unavailable]`
+
+#### Symptoms
+```text
+W/ManagedChannelImpl(10049): [{0}] Failed to resolve name. status={1}
+[cloud_firestore/unavailable] The service is currently unavailable.
+```
+
+#### Causes & Fixes
+
+1. **Missing Android Internet Permissions (Most Common on new Flutter apps)**:
+   Ensure `android.permission.INTERNET` is in `android/app/src/main/AndroidManifest.xml` (outside the `<application>` tag):
+   ```xml
+   <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+       <uses-permission android:name="android.permission.INTERNET"/>
+       <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+       <application ...>
+   ```
+
+2. **Android Emulator DNS Glitch**:
+   Android emulators frequently lose DNS connectivity to Google servers if the host PC switches Wi-Fi networks, wakes from sleep, or connects to a VPN.
+   - **Quick Fix:** In the emulator, pull down the notification shade, turn **Airplane mode ON for 3 seconds**, then turn it **OFF**.
+   - **Cold Boot:** In Android Studio, open **Device Manager** ➔ Click the **three dots** (⋮) next to your virtual device ➔ Click **Cold Boot Now**.
+   - Verify by opening Chrome inside the emulator and visiting any website.
+
+3. **Cloud Firestore Not Created in Firebase Console**:
+   Make sure you have navigated to your Firebase project ➔ **Build** ➔ **Firestore Database** and clicked **Create database**.
+
+4. **Anonymous Authentication Not Enabled**:
+   If using anonymous sign-in, navigate to Firebase Console ➔ **Build** ➔ **Authentication** ➔ **Sign-in method** ➔ ensure **Anonymous** is **Enabled**.
+
+5. **Using a Web App ID on Android**:
+   In your `FirebaseOptions`, if testing on an Android device or emulator, register an **Android App** in your Firebase project (using your app's package name, e.g. `com.example.yourapp`) and use the generated Android `appId` (starts with `1:...:android:...`).
+
+---
+
+### 2. `WARNING: Your app uses plugins that apply Kotlin Gradle Plugin (KGP): device_info_plus, package_info_plus`
+
+#### Symptoms
+```text
+WARNING: Your app uses the following plugins that apply Kotlin Gradle Plugin (KGP): device_info_plus, package_info_plus
+Future versions of Flutter will fail to build if your app uses plugins that apply KGP.
+```
+
+#### What It Means & Why It Appears
+- **It is an informational deprecation notice, NOT a build failure**: Your app will build, launch, and run normally in both debug and release modes.
+- In Flutter 3.24+ and 3.27+, the Flutter Gradle Plugin (FGP) checks for Android plugins that apply the legacy Kotlin Gradle Plugin (`kotlin-android`) directly in their build scripts.
+- Google and Flutter are transitioning towards **Built-in Kotlin** support (introduced in AGP 8.8+ / 9.0+). The warning is a forward-looking heads-up that future major versions of Flutter will eventually require Built-in Kotlin.
+
+#### Recommended Action
+- **No immediate action required**: You do not need to change anything in your app; tracking and device metadata resolution function normally.
+- In your application's `android/gradle.properties`, standard compatibility mode is maintained with:
+  ```properties
+  android.builtInKotlin=false
+  ```
+- When Flutter makes Built-in Kotlin mandatory in future releases, `tester_track` will update its dependency constraints to match the new ecosystem standards.
 
 ---
 

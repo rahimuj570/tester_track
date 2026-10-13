@@ -308,5 +308,121 @@ void main() {
       // Session was not finalized by timer after dispose
       expect(sessionManager.currentSession, isNotNull);
     });
+
+    test('onAppDetached immediately finalizes session without waiting for debounce',
+        () async {
+      await sessionManager.startSession();
+      expect(sessionManager.isTracking, isTrue);
+
+      sessionManager.onAppDetached();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(sessionManager.isTracking, isFalse);
+      expect(sessionManager.currentSession, isNull);
+    });
+
+    test('onAppResume beyond sessionTimeout starts a new session', () async {
+      const customOptions = TesterTrackOptions(
+        debugLogging: false,
+        sessionTimeout: Duration(milliseconds: 50),
+        inactivityDebounce: Duration(milliseconds: 500),
+      );
+
+      final timeoutManager = SessionManager(
+        testerId: 'T001',
+        authUid: 'anon_uid_123',
+        envInfo: envInfo,
+        localStorage: localStorage,
+        firestoreRepository: repository,
+        errorHandler: errorHandler,
+        options: customOptions,
+      );
+
+      await timeoutManager.startSession();
+      final firstSessionId = timeoutManager.currentSession!.sessionId;
+
+      // Simulate app paused
+      timeoutManager.onAppPauseOrInactive();
+
+      // Wait beyond sessionTimeout (50ms + margin)
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      // Resume app
+      timeoutManager.onAppResume();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(timeoutManager.isTracking, isTrue);
+      expect(timeoutManager.currentSession, isNotNull);
+      final secondSessionId = timeoutManager.currentSession!.sessionId;
+
+      // Brand new session started
+      expect(secondSessionId, isNot(equals(firstSessionId)));
+
+      timeoutManager.dispose();
+    });
+
+    test('onAppResume within sessionTimeout after onAppDetached recovers existing session',
+        () async {
+      const customOptions = TesterTrackOptions(
+        debugLogging: false,
+        sessionTimeout: Duration(milliseconds: 300),
+      );
+
+      final manager = SessionManager(
+        testerId: 'T001',
+        authUid: 'anon_uid_123',
+        envInfo: envInfo,
+        localStorage: localStorage,
+        firestoreRepository: repository,
+        errorHandler: errorHandler,
+        options: customOptions,
+      );
+
+      await manager.startSession();
+      final initialSessionId = manager.currentSession!.sessionId;
+
+      // Detach (app swipe away / terminated)
+      manager.onAppDetached();
+      expect(manager.isTracking, isFalse);
+      expect(manager.currentSession, isNull);
+
+      // Spend 50ms (well within 300ms sessionTimeout)
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Re-enter / resume app
+      manager.onAppResume();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(manager.isTracking, isTrue);
+      expect(manager.currentSession, isNotNull);
+      expect(manager.currentSession!.sessionId, equals(initialSessionId));
+      manager.dispose();
+    });
+
+    test(
+        'onAppPauseOrInactive immediately flushes foreground progress to Firestore without waiting for debounce',
+        () async {
+      await sessionManager.startSession();
+      final sessionId = sessionManager.currentSession!.sessionId;
+
+      // Simulate foreground time passage > 1s
+      await Future<void>.delayed(const Duration(milliseconds: 1050));
+
+      // App pauses / minimizes
+      sessionManager.onAppPauseOrInactive();
+
+      // Yield for unawaited async Firestore writes to complete
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final sessionDoc = await repository.getSession('T001', sessionId);
+      expect(sessionDoc, isNotNull);
+      expect(sessionDoc!.durationSeconds, greaterThanOrEqualTo(1));
+
+      final testerDoc = await repository.getTesterProfile('T001');
+      expect(testerDoc, isNotNull);
+      expect(testerDoc!.totalUsageSeconds, greaterThanOrEqualTo(1));
+
+      sessionManager.dispose();
+    });
   });
 }
