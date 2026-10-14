@@ -82,6 +82,25 @@ class TesterTrack {
               LocalStorage(errorHandler: tracker._errorHandler);
           await tracker._localStorage!.init();
 
+          // Purge stale cache if developer pointed to a different Firebase project
+          final previousProjectId =
+              tracker._localStorage!.getString('tt_active_project_id');
+          if (previousProjectId != null &&
+              previousProjectId != firebaseOptions.projectId) {
+            tracker._errorHandler.log(
+              'Firebase project changed ("$previousProjectId" -> "${firebaseOptions.projectId}"). '
+              'Purging stale local cache and session state from previous project.',
+            );
+            await tracker._localStorage!
+                .remove(TrackerConstants.prefsCachedConfigKey);
+            await tracker._localStorage!
+                .remove(TrackerConstants.prefsActiveSessionKey);
+          }
+          await tracker._localStorage!.setString(
+            'tt_active_project_id',
+            firebaseOptions.projectId,
+          );
+
           // 2. Resolve tester identity
           tracker._identityManager = IdentityManager(
             localStorage: tracker._localStorage!,
@@ -109,6 +128,15 @@ class TesterTrack {
           await tracker._firebaseService!.signInAnonymously();
           tracker._authUid = tracker._firebaseService!.currentAuthUid;
 
+          if (tracker._errorHandler.isCircuitBroken ||
+              tracker._authUid == null) {
+            tracker._errorHandler.log(
+              'TesterTrack initialization aborted: Anonymous authentication failed or Firebase project is deleted/inaccessible. Tracking is disabled.',
+            );
+            tracker._isInitialized = false;
+            return false;
+          }
+
           // 5. Gather device & environment info
           tracker._deviceInfoHelper =
               DeviceInfoHelper(errorHandler: tracker._errorHandler);
@@ -129,6 +157,14 @@ class TesterTrack {
           );
           await tracker._remoteConfigService!.init();
           await tracker._remoteConfigService!.fetchAndApplyConfig();
+
+          if (tracker._errorHandler.isCircuitBroken) {
+            tracker._errorHandler.log(
+              'TesterTrack initialization aborted: Circuit breaker tripped during remote config fetch. Tracking is disabled.',
+            );
+            tracker._isInitialized = false;
+            return false;
+          }
 
           // Evaluate whether tracking is currently allowed & calculate effective sync interval
           final isPermitted =

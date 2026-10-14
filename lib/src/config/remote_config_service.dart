@@ -135,6 +135,10 @@ class RemoteConfigService {
   }) {
     _periodicRefreshTimer?.cancel();
     _periodicRefreshTimer = Timer.periodic(refreshInterval, (_) async {
+      if (errorHandler.isCircuitBroken) {
+        dispose();
+        return;
+      }
       await errorHandler.runGuarded<void>(() async {
         final previousConfig = _activeConfig;
         final previousPermitted = isTrackingPermitted();
@@ -162,6 +166,8 @@ class RemoteConfigService {
     Duration throttleDuration = defaultRefreshInterval,
   }) async {
     await errorHandler.runGuarded<void>(() async {
+      if (errorHandler.isCircuitBroken) return;
+
       final now = DateTime.now().toUtc();
       if (_lastFetchTime != null &&
           now.difference(_lastFetchTime!) < throttleDuration) {

@@ -78,6 +78,7 @@ class SessionManager {
   ///   a fresh tracking session.
   Future<void> setTrackingPermitted(bool permitted) async {
     await errorHandler.runGuarded<void>(() async {
+      if (errorHandler.isCircuitBroken) return;
       if (_isTrackingPermitted == permitted) return;
       _isTrackingPermitted = permitted;
       errorHandler.log(
@@ -194,6 +195,12 @@ class SessionManager {
   Future<void> startSession() async {
     await errorHandler.runGuarded<void>(() async {
       _cancelInactivityDebounce();
+
+      if (errorHandler.isCircuitBroken) {
+        errorHandler.log(
+            'Tracking is disabled: circuit breaker is active.');
+        return;
+      }
 
       if (!_isTrackingPermitted) {
         errorHandler.log(
@@ -483,6 +490,10 @@ class SessionManager {
   void _startLocalHeartbeatTimer() {
     _localHeartbeatTimer?.cancel();
     _localHeartbeatTimer = Timer.periodic(options.localHeartbeatInterval, (_) {
+      if (errorHandler.isCircuitBroken) {
+        _cancelTimers();
+        return;
+      }
       errorHandler.runGuardedSync(() {
         if (!_isInForeground || _currentSession == null) {
           return;
@@ -497,6 +508,10 @@ class SessionManager {
   void _startFirestoreSyncTimer() {
     _firestoreSyncTimer?.cancel();
     _firestoreSyncTimer = Timer.periodic(_currentFirestoreSyncInterval, (_) {
+      if (errorHandler.isCircuitBroken) {
+        _cancelTimers();
+        return;
+      }
       errorHandler.runGuardedSync(() {
         if (_currentSession == null) {
           return;

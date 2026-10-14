@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pub.dev/packages/tester_track"><img src="https://img.shields.io/badge/pub-v0.0.3-blue.svg" alt="pub package"></a>
+  <a href="https://pub.dev/packages/tester_track"><img src="https://img.shields.io/badge/pub-v0.0.4-blue.svg" alt="pub package"></a>
   <a href="https://flutter.dev"><img src="https://img.shields.io/badge/platform-flutter%20%7C%20android%20%7C%20ios-blue" alt="Flutter Platform"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://firebase.google.com/"><img src="https://img.shields.io/badge/firebase-firestore%20%26%20auth-orange.svg" alt="Firebase Powered"></a>
@@ -154,7 +154,7 @@ Add `tester_track` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  tester_track: ^0.0.3
+  tester_track: ^0.0.4
 ```
 
 Or run:
@@ -434,6 +434,27 @@ Future versions of Flutter will fail to build if your app uses plugins that appl
   android.builtInKotlin=false
   ```
 - When Flutter makes Built-in Kotlin mandatory in future releases, `tester_track` will update its dependency constraints to match the new ecosystem standards.
+
+---
+
+### 3. `API key not valid` or Deleted Firebase Project
+
+#### Symptoms
+```text
+[firebase_auth/unknown] An internal error has occurred. [ API key not valid. Please pass a valid API key. ]
+[cloud_firestore/permission-denied] Permission denied on resource project <your-project-id>
+[TesterTrack] Circuit breaker tripped: Fatal Firebase error
+```
+
+#### What It Means
+- This occurs when the Firebase project configured in `secondaryFirebaseOptions` was deleted in Firebase Console, or invalid/revoked credentials were provided.
+- **Fail-Safe Circuit Breaker**: TesterTrack automatically detects fatal backend errors and activates its internal circuit breaker. It halts tracking immediately, cancels all background timers, and returns `false` from `TesterTrack.initialize()`.
+- **Your host application will NEVER crash or freeze**: Your app continues launching normally and `runApp()` executes immediately.
+
+#### How to Resolve
+1. Create or select an active Firebase project in [Firebase Console](https://console.firebase.google.com).
+2. Ensure **Anonymous Authentication** and **Cloud Firestore** are enabled.
+3. Update your `secondaryFirebaseOptions` with the new project's credentials. TesterTrack will automatically detect the new `projectId`, purge previous stale caches, and begin tracking cleanly.
 
 ---
 

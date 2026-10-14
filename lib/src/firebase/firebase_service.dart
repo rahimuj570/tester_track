@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_firestore_platform_interface/cloud_firestore_platform_interface.dart';
 // ignore: implementation_imports
@@ -5,6 +6,7 @@ import 'package:cloud_firestore_platform_interface/src/method_channel/method_cha
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import '../core/constants.dart';
 import '../core/error_handler.dart';
 
@@ -52,18 +54,80 @@ class TrackerFirebaseService {
     return await errorHandler.runGuarded<bool>(() async {
           errorHandler.log('Initializing named FirebaseApp: $appName');
 
-          // Check if named app already exists (e.g. from hot reload or previous initialization)
+          // Check if named app already exists in Dart registry (e.g. hot reload)
           FirebaseApp? existingApp;
           try {
             existingApp = Firebase.app(appName);
           } catch (_) {
-            // App not found in registry yet, which is expected on fresh launch
+            // App not found in Dart registry yet, which is expected on fresh launch or hot restart
+          }
+
+          if (existingApp != null) {
+            // If developer updated Firebase options, delete and re-create with new options
+            if (existingApp.options.projectId != firebaseOptions.projectId ||
+                existingApp.options.apiKey != firebaseOptions.apiKey ||
+                existingApp.options.appId != firebaseOptions.appId) {
+              errorHandler.log(
+                'Firebase options changed for "$appName". Re-creating app instance (${existingApp.options.projectId} -> ${firebaseOptions.projectId}).',
+              );
+              try {
+                await existingApp.delete();
+              } catch (_) {}
+              existingApp = null;
+            }
           }
 
           if (existingApp != null) {
             errorHandler.log('Reusing existing named FirebaseApp: $appName');
             _app = existingApp;
           } else {
+            try {
+              _app = await Firebase.initializeApp(
+                name: appName,
+                options: firebaseOptions,
+              );
+            } catch (e) {
+              if (e.toString().contains('duplicate-app')) {
+                errorHandler.log(
+                  'Detected existing native FirebaseApp "$appName". Deleting and re-initializing with latest configuration...',
+                );
+                try {
+                  final staleApp = Firebase.app(appName);
+                  await staleApp.delete();
+                } catch (_) {
+                  try {
+                    const channel =
+                        MethodChannel('plugins.flutter.io/firebase_core');
+                    await channel.invokeMethod<void>(
+                      'FirebaseApp#delete',
+                      <String, dynamic>{'appName': appName},
+                    );
+                  } catch (delError) {
+                    errorHandler
+                        .log('Note: native app delete invoked with: $delError');
+                  }
+                }
+
+                // Re-initialize now that the native duplicate has been removed
+                _app = await Firebase.initializeApp(
+                  name: appName,
+                  options: firebaseOptions,
+                );
+              } else {
+                rethrow;
+              }
+            }
+          }
+
+          // Strict verification: ensure active app matches latest options passed by developer
+          if (_app!.options.projectId != firebaseOptions.projectId ||
+              _app!.options.apiKey != firebaseOptions.apiKey) {
+            errorHandler.log(
+              'Stale options detected on "$appName" (${_app!.options.projectId} != ${firebaseOptions.projectId}). Forcing recreate with latest config...',
+            );
+            try {
+              await _app!.delete();
+            } catch (_) {}
             _app = await Firebase.initializeApp(
               name: appName,
               options: firebaseOptions,
@@ -111,19 +175,38 @@ class TrackerFirebaseService {
         errorHandler.log(
             'Reusing existing anonymous auth session (${currentUser.uid})');
         try {
-          await currentUser.getIdToken();
-        } catch (_) {}
+          await currentUser.getIdToken().timeout(
+                const Duration(seconds: 4),
+                onTimeout: () => null,
+              );
+        } catch (e) {
+          if (TrackerErrorHandler.isFatalFirebaseError(e)) {
+            errorHandler.tripCircuitBreaker('Cached auth token validation failed: $e');
+            try {
+              await _auth!.signOut();
+            } catch (_) {}
+            return null;
+          }
+        }
         return null;
       }
 
       errorHandler
           .log('Signing in anonymously to secondary Firebase project...');
       try {
-        final userCredential = await _auth!.signInAnonymously();
+        final userCredential = await _auth!.signInAnonymously().timeout(
+              const Duration(seconds: 5),
+              onTimeout: () => throw TimeoutException(
+                'Anonymous authentication timed out after 5 seconds.',
+              ),
+            );
         errorHandler
             .log('Anonymous sign-in complete. UID: ${userCredential.user?.uid}');
         try {
-          await userCredential.user?.getIdToken();
+          await userCredential.user?.getIdToken().timeout(
+                const Duration(seconds: 4),
+                onTimeout: () => null,
+              );
         } catch (_) {}
         return userCredential;
       } on FirebaseAuthException catch (e) {

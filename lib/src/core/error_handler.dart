@@ -16,8 +16,26 @@ class TrackerErrorHandler {
 
   /// Activates the circuit breaker to prevent repeated futile network attempts.
   void tripCircuitBreaker(String reason) {
+    if (_isCircuitBroken) return;
     _isCircuitBroken = true;
     log('Circuit breaker tripped: $reason');
+    log('TesterTrack tracking has been permanently disabled for this session to protect the host application.');
+  }
+
+  /// Checks whether an error represents a fatal, unrecoverable Firebase configuration
+  /// or project status (such as a deleted project, invalid API key, or disabled auth).
+  static bool isFatalFirebaseError(Object error) {
+    final str = error.toString().toLowerCase();
+
+    return str.contains('api key not valid') ||
+        str.contains('api-key-not-valid') ||
+        str.contains('invalid-api-key') ||
+        str.contains('project-not-found') ||
+        str.contains('project not found') ||
+        str.contains('app-deleted') ||
+        str.contains('app deleted') ||
+        str.contains('permission denied on resource project') ||
+        str.contains('admin-restricted-operation');
   }
 
   /// Logs a message to [debugPrint] only if [debugLogging] is enabled.
@@ -41,7 +59,11 @@ class TrackerErrorHandler {
     try {
       return await action();
     } catch (error, stackTrace) {
-      log('Error during "${operationName ?? 'unnamed'}": $error\n$stackTrace');
+      if (isFatalFirebaseError(error)) {
+        tripCircuitBreaker('Fatal Firebase error during "${operationName ?? 'unnamed'}": $error');
+      } else {
+        log('Error during "${operationName ?? 'unnamed'}": $error\n$stackTrace');
+      }
       return fallbackValue;
     }
   }
@@ -60,7 +82,11 @@ class TrackerErrorHandler {
     try {
       return action();
     } catch (error, stackTrace) {
-      log('Error during "${operationName ?? 'unnamed'}": $error\n$stackTrace');
+      if (isFatalFirebaseError(error)) {
+        tripCircuitBreaker('Fatal Firebase error during "${operationName ?? 'unnamed'}": $error');
+      } else {
+        log('Error during "${operationName ?? 'unnamed'}": $error\n$stackTrace');
+      }
       return fallbackValue;
     }
   }

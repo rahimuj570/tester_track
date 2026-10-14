@@ -48,5 +48,43 @@ void main() {
       );
       expect(result, equals(-1));
     });
+
+    test('isFatalFirebaseError correctly identifies deleted/invalid project errors', () {
+      expect(TrackerErrorHandler.isFatalFirebaseError(
+        'An internal error has occurred. [ API key not valid. Please pass a valid API key. ]',
+      ), isTrue);
+      expect(TrackerErrorHandler.isFatalFirebaseError(
+        'Status{code=PERMISSION_DENIED, description=Permission denied on resource project my-proj., cause=null}',
+      ), isTrue);
+      expect(TrackerErrorHandler.isFatalFirebaseError('project-not-found'), isTrue);
+      expect(TrackerErrorHandler.isFatalFirebaseError('app-deleted'), isTrue);
+      expect(TrackerErrorHandler.isFatalFirebaseError('admin-restricted-operation'), isTrue);
+
+      // Transient errors should not be flagged as fatal
+      expect(TrackerErrorHandler.isFatalFirebaseError('network-request-failed'), isFalse);
+      expect(TrackerErrorHandler.isFatalFirebaseError('unavailable'), isFalse);
+      expect(TrackerErrorHandler.isFatalFirebaseError('deadline-exceeded'), isFalse);
+    });
+
+    test('runGuarded automatically trips circuit breaker on fatal Firebase error', () async {
+      final handler = TrackerErrorHandler(debugLogging: false);
+      expect(handler.isCircuitBroken, isFalse);
+
+      final result = await handler.runGuarded<String>(
+        () async => throw Exception('API key not valid. Please pass a valid API key.'),
+        operationName: 'FirebaseAuth.signInAnonymously',
+        fallbackValue: 'fallback',
+      );
+
+      expect(result, equals('fallback'));
+      expect(handler.isCircuitBroken, isTrue);
+
+      // Next call should be skipped
+      bool nextExecuted = false;
+      await handler.runGuarded<void>(() async {
+        nextExecuted = true;
+      });
+      expect(nextExecuted, isFalse);
+    });
   });
 }

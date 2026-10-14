@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants.dart';
@@ -45,7 +46,9 @@ class FirestoreRepository {
   Future<RemoteConfigData?> fetchRemoteConfig(
       {RemoteConfigData? fallback}) async {
     return await errorHandler.runGuarded<RemoteConfigData?>(() async {
-      final docSnap = await _configGlobalDoc().get();
+      final docSnap = await _configGlobalDoc()
+          .get()
+          .timeout(TrackerConstants.remoteConfigTimeout);
       if (!docSnap.exists || docSnap.data() == null) {
         errorHandler
             .log('Remote config document config/global does not exist.');
@@ -347,8 +350,12 @@ class FirestoreRepository {
               errorHandler.log(
                   'Transactionally finalized session $sessionId (duration: ${durationSeconds}s, +${deltaToCredit}s credited) and updated aggregates.');
               return true;
-            });
+            }).timeout(const Duration(seconds: 4));
           } catch (e) {
+            if (TrackerErrorHandler.isFatalFirebaseError(e)) {
+              errorHandler.tripCircuitBreaker('Finalize session failed with fatal Firebase error: $e');
+              return false;
+            }
             errorHandler.log(
                 'Transaction failed ($e). Falling back to non-transactional merge for offline safety.');
 

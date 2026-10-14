@@ -40,5 +40,21 @@ void main() {
       final result2 = await tracker.resetTesterId();
       expect(result2, isFalse);
     });
+
+    test('initialize returns false gracefully without throwing when Firebase is invalid or unavailable', () async {
+      final tracker = TesterTrack.instance;
+      final success = await TesterTrack.initialize(
+        firebaseOptions: const FirebaseOptions(
+          apiKey: 'invalid_key',
+          appId: 'invalid_app',
+          messagingSenderId: '123',
+          projectId: 'deleted-project-123',
+        ),
+      );
+
+      expect(success, isFalse);
+      expect(tracker.isInitialized, isFalse);
+      expect(tracker.isTracking, isFalse);
+    });
   });
 }

@@ -1,6 +1,6 @@
 name: tester_track
 description: Lightweight Flutter tracker for Google Play 14-day closed testing. Monitor tester engagement, session duration, and daily activity via secondary Firebase.
-version: 0.0.3
+version: 0.0.4
 homepage: https://tester-track.pages.dev
 repository: https://github.com/rahimuj570/tester_track
 issue_tracker: https://github.com/rahimuj570/tester_track/issues
