@@ -181,7 +181,8 @@ class TrackerFirebaseService {
               );
         } catch (e) {
           if (TrackerErrorHandler.isFatalFirebaseError(e)) {
-            errorHandler.tripCircuitBreaker('Cached auth token validation failed: $e');
+            errorHandler
+                .tripCircuitBreaker('Cached auth token validation failed: $e');
             try {
               await _auth!.signOut();
             } catch (_) {}
@@ -200,8 +201,8 @@ class TrackerFirebaseService {
                 'Anonymous authentication timed out after 5 seconds.',
               ),
             );
-        errorHandler
-            .log('Anonymous sign-in complete. UID: ${userCredential.user?.uid}');
+        errorHandler.log(
+            'Anonymous sign-in complete. UID: ${userCredential.user?.uid}');
         try {
           await userCredential.user?.getIdToken().timeout(
                 const Duration(seconds: 4),

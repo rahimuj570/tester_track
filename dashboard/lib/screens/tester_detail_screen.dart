@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/tester_view_model.dart';
@@ -52,13 +53,66 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
 
     final activeSessions =
         sessions.where((s) => s.isCurrentlyActive()).toList();
-    final activeCount = activeSessions.length;
-    final totalRecordedCount =
-        sessions.isNotEmpty ? sessions.length : tester.sessionCount;
-    final inProgressSessions = sessions.where((s) => !s.isFinalized).toList();
-    final inProgressSeconds =
-        inProgressSessions.fold<int>(0, (sum, s) => sum + s.durationSeconds);
-    final totalSeconds = tester.totalUsageSeconds + inProgressSeconds;
+    final activeCount = activeSessions.isNotEmpty
+        ? activeSessions.length
+        : tester.activeSessionCount;
+    final totalRecordedCount = max(
+      sessions.length,
+      max(tester.sessionCount, tester.totalRecordedSessions),
+    );
+
+    // Sum of all session durations directly from fetched session documents
+    final sessionsTotalSeconds =
+        sessions.fold<int>(0, (sum, s) => sum + s.durationSeconds);
+    // If sessions are loaded, their sum represents the true total recorded duration.
+    // If tester.totalUsageSeconds is higher (e.g. older sessions past fetch limit), use that.
+    final totalSeconds = sessions.isNotEmpty
+        ? max(sessionsTotalSeconds, tester.totalUsageSeconds)
+        : max(tester.totalObservedUsageSeconds, tester.totalUsageSeconds);
+
+    // Today's metrics derived from sessions and tester model
+    final nowLocal = DateTime.now();
+    final todayLocalStr =
+        '${nowLocal.year.toString().padLeft(4, '0')}-${nowLocal.month.toString().padLeft(2, '0')}-${nowLocal.day.toString().padLeft(2, '0')}';
+    final nowUtc = DateTime.now().toUtc();
+    final todayUtcStr =
+        '${nowUtc.year.toString().padLeft(4, '0')}-${nowUtc.month.toString().padLeft(2, '0')}-${nowUtc.day.toString().padLeft(2, '0')}';
+    final todayDates = {todayUtcStr, todayLocalStr};
+
+    final sessionsToday = sessions.where((s) {
+      if (todayDates.contains(s.activeDate)) return true;
+      final st = s.startedAt.toLocal();
+      return st.year == nowLocal.year &&
+          st.month == nowLocal.month &&
+          st.day == nowLocal.day;
+    }).toList();
+
+    final sessionsTodaySeconds =
+        sessionsToday.fold<int>(0, (sum, s) => sum + s.durationSeconds);
+    final effectiveTodaySeconds =
+        max(tester.todayUsageSeconds, sessionsTodaySeconds);
+    final effectiveTodaySessionsCount =
+        max(tester.todaySessionsCount, sessionsToday.length);
+    final isUsedToday = tester.isUsedToday ||
+        sessionsToday.isNotEmpty ||
+        effectiveTodaySeconds > 0;
+
+    // Active days derived from sessions and tester document
+    final sessionActiveDates = sessions
+        .map((s) => s.activeDate.isNotEmpty
+            ? s.activeDate
+            : '${s.startedAt.toLocal().year}-${s.startedAt.toLocal().month.toString().padLeft(2, '0')}-${s.startedAt.toLocal().day.toString().padLeft(2, '0')}')
+        .toSet();
+    final allActiveDates = <String>{
+      ...tester.recentActiveDates,
+      ...sessionActiveDates,
+      if (isUsedToday) todayLocalStr,
+    };
+    final activeDaysCount = max(
+      tester.activeDaysCount,
+      max(allActiveDates.length,
+          (totalRecordedCount > 0 || isUsedToday) ? 1 : 0),
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -137,7 +191,7 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                               ],
                             ),
                           )
-                        else if (tester.isUsedToday)
+                        else if (isUsedToday)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
@@ -156,7 +210,9 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                                     size: 7, color: AppTheme.successColor),
                                 const SizedBox(width: 5),
                                 Text(
-                                  'ACTIVE TODAY (${tester.formattedTodayUsageTime})',
+                                  effectiveTodaySeconds > 0
+                                      ? 'ACTIVE TODAY (${_formatUsageSeconds(effectiveTodaySeconds)})'
+                                      : 'ACTIVE TODAY',
                                   style: const TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
@@ -185,7 +241,6 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                               ),
                             ),
                           ),
-
                       ],
                     ),
                     Text(
@@ -258,13 +313,13 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                   ),
                   _DetailCard(
                     title: "Today's Usage",
-                    value: tester.isUsedToday
-                        ? (tester.todayUsageSeconds > 0
-                            ? tester.formattedTodayUsageTime
+                    value: isUsedToday
+                        ? (effectiveTodaySeconds > 0
+                            ? _formatUsageSeconds(effectiveTodaySeconds)
                             : '< 1m')
                         : 'No Activity',
-                    subtitle: tester.isUsedToday
-                        ? '${tester.todaySessionsCount} session(s) today'
+                    subtitle: isUsedToday
+                        ? '$effectiveTodaySessionsCount session(s) today'
                         : 'Inactive today',
                     icon: Icons.today_rounded,
                   ),
@@ -273,12 +328,14 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                     value: activeCount > 0
                         ? '$totalRecordedCount ($activeCount Active)'
                         : '$totalRecordedCount',
-                    subtitle: 'Total usage: ${_formatUsageSeconds(totalSeconds)}',
+                    subtitle:
+                        'Total usage: ${_formatUsageSeconds(totalSeconds)}',
                     icon: Icons.timer,
                   ),
                   _DetailCard(
                     title: 'Active Days',
-                    value: '${tester.activeDaysCount} Days',
+                    value:
+                        '$activeDaysCount ${activeDaysCount == 1 ? 'Day' : 'Days'}',
                     subtitle:
                         'Last seen: ${dateFormat.format(tester.lastSeen.toLocal())}',
                     icon: Icons.calendar_today,
@@ -414,7 +471,8 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                                         color: s.isCurrentlyActive()
                                             ? AppTheme.successColor
                                                 .withValues(alpha: 0.15)
-                                            : Colors.white.withValues(alpha: 0.05),
+                                            : Colors.white
+                                                .withValues(alpha: 0.05),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
@@ -448,38 +506,32 @@ class _TesterDetailScreenState extends State<TesterDetailScreen> {
                                   DataCell(
                                     s.isCurrentlyActive()
                                         ? Container(
-                                            padding:
-                                                const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 4),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 4),
                                             decoration: BoxDecoration(
                                               color: AppTheme.successColor
                                                   .withValues(alpha: 0.15),
                                               borderRadius:
                                                   BorderRadius.circular(6),
                                               border: Border.all(
-                                                  color: AppTheme
-                                                      .successColor
-                                                      .withValues(
-                                                          alpha: 0.4)),
+                                                  color: AppTheme.successColor
+                                                      .withValues(alpha: 0.4)),
                                             ),
                                             child: const Row(
-                                              mainAxisSize:
-                                                  MainAxisSize.min,
+                                              mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Icon(Icons.circle,
                                                     size: 7,
-                                                    color: AppTheme
-                                                        .successColor),
+                                                    color:
+                                                        AppTheme.successColor),
                                                 SizedBox(width: 4),
                                                 Text(
                                                   'Active Now',
                                                   style: TextStyle(
                                                     fontSize: 11,
-                                                    fontWeight:
-                                                        FontWeight.bold,
-                                                    color: AppTheme
-                                                        .successColor,
+                                                    fontWeight: FontWeight.bold,
+                                                    color:
+                                                        AppTheme.successColor,
                                                   ),
                                                 ),
                                               ],

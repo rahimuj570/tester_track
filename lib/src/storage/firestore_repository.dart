@@ -307,7 +307,9 @@ class FirestoreRepository {
 
               final sessionDataMap = sessionSnap.data()!;
               final alreadyCreditedUsage =
-                  (sessionDataMap['syncedTesterUsageSeconds'] as num?)?.toInt() ?? 0;
+                  (sessionDataMap['syncedTesterUsageSeconds'] as num?)
+                          ?.toInt() ??
+                      0;
               final deltaToCredit =
                   max(0, durationSeconds - alreadyCreditedUsage);
 
@@ -330,7 +332,8 @@ class FirestoreRepository {
                   activeDate
                 };
                 final updatedDates = datesSet.toList()..sort();
-                if (updatedDates.length > TrackerConstants.maxRecentActiveDates) {
+                if (updatedDates.length >
+                    TrackerConstants.maxRecentActiveDates) {
                   updatedDates.removeRange(
                       0,
                       updatedDates.length -
@@ -353,19 +356,45 @@ class FirestoreRepository {
             }).timeout(const Duration(seconds: 4));
           } catch (e) {
             if (TrackerErrorHandler.isFatalFirebaseError(e)) {
-              errorHandler.tripCircuitBreaker('Finalize session failed with fatal Firebase error: $e');
+              errorHandler.tripCircuitBreaker(
+                  'Finalize session failed with fatal Firebase error: $e');
               return false;
             }
             errorHandler.log(
                 'Transaction failed ($e). Falling back to non-transactional merge for offline safety.');
 
             int deltaToCredit = durationSeconds;
+            int? updatedActiveDays;
+            List<String>? updatedDates;
             try {
               final sessionSnap = await sessionRef.get();
               if (sessionSnap.exists && sessionSnap.data() != null) {
                 final alreadyCreditedUsage =
-                    (sessionSnap.data()!['syncedTesterUsageSeconds'] as num?)?.toInt() ?? 0;
+                    (sessionSnap.data()!['syncedTesterUsageSeconds'] as num?)
+                            ?.toInt() ??
+                        0;
                 deltaToCredit = max(0, durationSeconds - alreadyCreditedUsage);
+              }
+              final tSnap = await testerRef.get();
+              if (tSnap.exists && tSnap.data() != null) {
+                final rawDates =
+                    tSnap.data()!['recentActiveDates'] as List<dynamic>? ?? [];
+                final datesSet = <String>{
+                  ...rawDates.map((e) => e.toString()),
+                  activeDate,
+                };
+                final sortedDates = datesSet.toList()..sort();
+                if (sortedDates.length >
+                    TrackerConstants.maxRecentActiveDates) {
+                  sortedDates.removeRange(
+                      0,
+                      sortedDates.length -
+                          TrackerConstants.maxRecentActiveDates);
+                }
+                updatedDates = sortedDates;
+                final curActiveDays =
+                    (tSnap.data()!['activeDaysCount'] as num?)?.toInt() ?? 0;
+                updatedActiveDays = max(curActiveDays, datesSet.length);
               }
             } catch (_) {}
 
@@ -382,7 +411,14 @@ class FirestoreRepository {
               'lastSeen': endedAt.toUtc().toIso8601String(),
               'sessionCount': FieldValue.increment(1),
               'totalUsageSeconds': FieldValue.increment(deltaToCredit),
-              'recentActiveDates': FieldValue.arrayUnion([activeDate]),
+              if (updatedActiveDays != null)
+                'activeDaysCount': updatedActiveDays
+              else
+                'activeDaysCount': FieldValue.increment(1),
+              if (updatedDates != null)
+                'recentActiveDates': updatedDates
+              else
+                'recentActiveDates': FieldValue.arrayUnion([activeDate]),
               'updatedAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
 

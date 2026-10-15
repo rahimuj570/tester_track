@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/tester_view_model.dart';
@@ -20,7 +21,8 @@ class _TestersScreenState extends State<TestersScreen> {
   String _searchQuery = '';
   String _platformFilter = 'All';
   String _activityFilter = 'All'; // 'All', 'today', 'inactive_today'
-  String _sortBy = 'lastSeen'; // 'lastSeen', 'todayUsage', 'usage', 'sessions', 'activeDays'
+  String _sortBy =
+      'lastSeen'; // 'lastSeen', 'todayUsage', 'usage', 'sessions', 'activeDays'
   final ScrollController _horizontalScrollController = ScrollController();
 
   @override
@@ -272,7 +274,6 @@ class _TestersScreenState extends State<TestersScreen> {
                       if (val != null) setState(() => _sortBy = val);
                     },
                   ),
-
                 ],
               ),
             ),
@@ -316,258 +317,276 @@ class _TestersScreenState extends State<TestersScreen> {
                           child: DataTable(
                             headingRowColor: WidgetStateProperty.all(
                                 const Color(0xFF0F172A)),
-                        columns: const [
-                          DataColumn(label: Text('Tester ID')),
-                          DataColumn(label: Text('Platform')),
-                          DataColumn(label: Text('Device Model')),
-                          DataColumn(label: Text('Today Status')),
-                          DataColumn(label: Text("Today's Usage")),
-                          DataColumn(label: Text('App Version')),
-                          DataColumn(label: Text('Total Usage')),
-                          DataColumn(label: Text('Sessions')),
-                          DataColumn(label: Text('Active Days')),
-                          DataColumn(label: Text('Last Seen')),
-                          DataColumn(label: Text('Actions')),
-                        ],
-                        rows: filtered.map((t) {
-                          return DataRow(
-                            cells: [
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      _getPlatformIcon(t.platform),
-                                      size: 16,
-                                      color: AppTheme.primaryColor,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    SelectableText(
-                                      t.testerId,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontFamily: 'monospace',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              DataCell(Text(t.platform)),
-                              DataCell(Text(t.deviceModel)),
-                              DataCell(
-                                t.isCurrentlyActive
-                                    ? Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.warningColor
-                                              .withValues(alpha: 0.15),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          border: Border.all(
-                                              color: AppTheme.warningColor
-                                                  .withValues(alpha: 0.4)),
+                            columns: const [
+                              DataColumn(label: Text('Tester ID')),
+                              DataColumn(label: Text('Platform')),
+                              DataColumn(label: Text('Device Model')),
+                              DataColumn(label: Text('Today Status')),
+                              DataColumn(label: Text("Today's Usage")),
+                              DataColumn(label: Text('App Version')),
+                              DataColumn(label: Text('Total Usage')),
+                              DataColumn(label: Text('Sessions')),
+                              DataColumn(label: Text('Active Days')),
+                              DataColumn(label: Text('Last Seen')),
+                              DataColumn(label: Text('Actions')),
+                            ],
+                            rows: filtered.map((t) {
+                              return DataRow(
+                                cells: [
+                                  DataCell(
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          _getPlatformIcon(t.platform),
+                                          size: 16,
+                                          color: AppTheme.primaryColor,
                                         ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.circle,
-                                                size: 7,
-                                                color: AppTheme.warningColor),
-                                            SizedBox(width: 6),
-                                            Text(
-                                              'Active Now',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppTheme.warningColor,
-                                              ),
-                                            ),
-                                          ],
+                                        const SizedBox(width: 8),
+                                        SelectableText(
+                                          t.testerId,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontFamily: 'monospace',
+                                          ),
                                         ),
-                                      )
-                                    : t.isUsedToday
+                                      ],
+                                    ),
+                                  ),
+                                  DataCell(Text(t.platform)),
+                                  DataCell(Text(t.deviceModel)),
+                                  DataCell(
+                                    t.isCurrentlyActive
                                         ? Container(
                                             padding: const EdgeInsets.symmetric(
                                                 horizontal: 8, vertical: 4),
                                             decoration: BoxDecoration(
-                                              color: AppTheme.successColor
+                                              color: AppTheme.warningColor
                                                   .withValues(alpha: 0.15),
-                                              borderRadius:
-                                              BorderRadius.circular(12),
-                                              border: Border.all(
-                                                  color: AppTheme.successColor
-                                                      .withValues(alpha: 0.4)),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Icon(Icons.circle,
-                                                    size: 7,
-                                                    color:
-                                                        AppTheme.successColor),
-                                                const SizedBox(width: 6),
-                                                Text(
-                                                  t.todaySessionsCount > 0
-                                                      ? 'Used Today (${t.todaySessionsCount})'
-                                                      : 'Used Today',
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.bold,
-                                                    color:
-                                                        AppTheme.successColor,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          )
-                                        : Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.05),
                                               borderRadius:
                                                   BorderRadius.circular(12),
                                               border: Border.all(
-                                                  color: Colors.white
-                                                      .withValues(alpha: 0.1)),
+                                                  color: AppTheme.warningColor
+                                                      .withValues(alpha: 0.4)),
                                             ),
                                             child: const Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Icon(Icons.circle,
                                                     size: 7,
-                                                    color: AppTheme.textMuted),
+                                                    color:
+                                                        AppTheme.warningColor),
                                                 SizedBox(width: 6),
                                                 Text(
-                                                  'Not Today',
+                                                  'Active Now',
                                                   style: TextStyle(
                                                     fontSize: 11,
-                                                    fontWeight: FontWeight.w500,
-                                                    color: AppTheme.textMuted,
+                                                    fontWeight: FontWeight.bold,
+                                                    color:
+                                                        AppTheme.warningColor,
                                                   ),
                                                 ),
                                               ],
                                             ),
+                                          )
+                                        : t.isUsedToday
+                                            ? Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: AppTheme.successColor
+                                                      .withValues(alpha: 0.15),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  border: Border.all(
+                                                      color: AppTheme
+                                                          .successColor
+                                                          .withValues(
+                                                              alpha: 0.4)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.circle,
+                                                        size: 7,
+                                                        color: AppTheme
+                                                            .successColor),
+                                                    const SizedBox(width: 6),
+                                                    Text(
+                                                      t.todaySessionsCount > 0
+                                                          ? 'Used Today (${t.todaySessionsCount})'
+                                                          : 'Used Today',
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: AppTheme
+                                                            .successColor,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              )
+                                            : Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.05),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  border: Border.all(
+                                                      color: Colors.white
+                                                          .withValues(
+                                                              alpha: 0.1)),
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.circle,
+                                                        size: 7,
+                                                        color:
+                                                            AppTheme.textMuted),
+                                                    SizedBox(width: 6),
+                                                    Text(
+                                                      'Not Today',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                        color:
+                                                            AppTheme.textMuted,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                  ),
+                                  DataCell(
+                                    t.isUsedToday
+                                        ? Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                t.todayUsageSeconds > 0
+                                                    ? t.formattedTodayUsageTime
+                                                    : '< 1m',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Color(0xFF38BDF8),
+                                                ),
+                                              ),
+                                              if (t.isCurrentlyActive)
+                                                const Text(
+                                                  'tracking now',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color:
+                                                        AppTheme.warningColor,
+                                                  ),
+                                                ),
+                                            ],
+                                          )
+                                        : const Text(
+                                            '—',
+                                            style: TextStyle(
+                                                color: AppTheme.textMuted),
                                           ),
-                              ),
-                              DataCell(
-                                t.isUsedToday
-                                    ? Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            t.todayUsageSeconds > 0
-                                                ? t.formattedTodayUsageTime
-                                                : '< 1m',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF38BDF8),
+                                  ),
+                                  DataCell(Text(t.appVersion)),
+                                  DataCell(
+                                    Text(
+                                      t.totalObservedUsageSeconds > 0
+                                          ? t.formattedTotalUsageTime
+                                          : t.formattedUsageTime,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '${max(t.sessionCount, t.totalRecordedSessions)}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                        if (t.isCurrentlyActive) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.successColor
+                                                  .withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
                                             ),
-                                          ),
-                                          if (t.isCurrentlyActive)
-                                            const Text(
-                                              'tracking now',
-                                              style: TextStyle(
+                                            child: Text(
+                                              '+${t.activeSessionCount} active',
+                                              style: const TextStyle(
                                                 fontSize: 10,
-                                                color: AppTheme.warningColor,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.successColor,
                                               ),
                                             ),
-                                        ],
-                                      )
-                                    : const Text(
-                                        '—',
-                                        style: TextStyle(
-                                            color: AppTheme.textMuted),
-                                      ),
-                              ),
-                              DataCell(Text(t.appVersion)),
-                              DataCell(
-                                Text(
-                                  t.isCurrentlyActive
-                                      ? t.formattedTotalUsageTime
-                                      : t.formattedUsageTime,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      t.isCurrentlyActive
-                                          ? '${t.totalRecordedSessions}'
-                                          : '${t.sessionCount}',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                    if (t.isCurrentlyActive) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.successColor
-                                              .withValues(alpha: 0.15),
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          '+${t.activeSessionCount} active',
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.successColor,
                                           ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  DataCell(Text(
+                                      '${max(t.activeDaysCount, (max(t.sessionCount, t.totalRecordedSessions) > 0 || t.isUsedToday || t.recentActiveDates.isNotEmpty) ? 1 : 0)} d')),
+                                  DataCell(Text(
+                                      dateFormat.format(t.lastSeen.toLocal()))),
+                                  DataCell(
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ElevatedButton.icon(
+                                          icon: const Icon(Icons.visibility,
+                                              size: 14),
+                                          label: const Text('View Sessions',
+                                              style: TextStyle(fontSize: 12)),
+                                          style: ElevatedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 10, vertical: 8),
+                                          ),
+                                          onPressed: () {
+                                            state.selectTester(t.testerId);
+                                          },
                                         ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              DataCell(Text('${t.activeDaysCount} d')),
-                              DataCell(Text(
-                                  dateFormat.format(t.lastSeen.toLocal()))),
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ElevatedButton.icon(
-                                      icon: const Icon(Icons.visibility, size: 14),
-                                      label: const Text('View Sessions',
-                                          style: TextStyle(fontSize: 12)),
-                                      style: ElevatedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 8),
-                                      ),
-                                      onPressed: () {
-                                        state.selectTester(t.testerId);
-                                      },
+                                        const SizedBox(width: 6),
+                                        IconButton(
+                                          icon: const Icon(Icons.edit_outlined,
+                                              size: 16),
+                                          tooltip: 'Edit Device Info',
+                                          color: AppTheme.textMuted,
+                                          onPressed: () {
+                                            _showEditTesterDialog(
+                                                context, state, t);
+                                          },
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 6),
-                                    IconButton(
-                                      icon: const Icon(Icons.edit_outlined, size: 16),
-                                      tooltip: 'Edit Device Info',
-                                      color: AppTheme.textMuted,
-                                      onPressed: () {
-                                        _showEditTesterDialog(context, state, t);
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
             ),
           ),
         ],

@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 /// Immutable model representing a tester profile in Firestore (`testers/{testerId}`).
@@ -76,8 +77,15 @@ class TesterData {
       lastSeen: parseDate(map['lastSeen'], now),
       sessionCount: (map['sessionCount'] as num?)?.toInt() ?? 0,
       totalUsageSeconds: (map['totalUsageSeconds'] as num?)?.toInt() ?? 0,
-      activeDaysCount:
-          (map['activeDaysCount'] as num?)?.toInt() ?? parsedDates.length,
+      activeDaysCount: max(
+        (map['activeDaysCount'] as num?)?.toInt() ?? 0,
+        max(
+            parsedDates.length,
+            (((map['sessionCount'] as num?)?.toInt() ?? 0) > 0 ||
+                    parsedDates.isNotEmpty)
+                ? 1
+                : 0),
+      ),
       recentActiveDates: parsedDates,
     );
   }

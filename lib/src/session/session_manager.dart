@@ -197,8 +197,7 @@ class SessionManager {
       _cancelInactivityDebounce();
 
       if (errorHandler.isCircuitBroken) {
-        errorHandler.log(
-            'Tracking is disabled: circuit breaker is active.');
+        errorHandler.log('Tracking is disabled: circuit breaker is active.');
         return;
       }
 
@@ -313,7 +312,8 @@ class SessionManager {
       );
 
       _inactivityDebounceTimer = Timer(effectiveTimeout, () {
-        errorHandler.log('Inactivity timeout expired in background. Finalizing session.');
+        errorHandler.log(
+            'Inactivity timeout expired in background. Finalizing session.');
         unawaited(_finalizeCurrentSession());
       });
     }, operationName: 'SessionManager.onAppPauseOrInactive');

@@ -17,3 +17,5 @@ Thumbs.db
 .idea/
 .vscode/
 *.iml
+.wrangler/
+.metadata

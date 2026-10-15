@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/project_config.dart';
 import '../models/remote_config_form_model.dart';
@@ -184,8 +185,8 @@ class DashboardFirestoreService {
         final updated = parseTime(data['updatedAt']);
         final started = parseTime(data['startedAt']) ?? nowUtc;
         final lastActive = updated ?? started.add(Duration(seconds: dur));
-        final isRecent =
-            nowUtc.difference(lastActive) <= SessionViewModel.defaultActiveTimeout;
+        final isRecent = nowUtc.difference(lastActive) <=
+            SessionViewModel.defaultActiveTimeout;
 
         if (isRecent) {
           activeCount++;
@@ -306,13 +307,69 @@ class DashboardFirestoreService {
         }
       }
 
+      // Calculate accurate active dates and active days count
+      final sessionDates = <String>{};
+      for (final data in todayDocs.values) {
+        final d = data['activeDate']?.toString();
+        if (d != null && d.isNotEmpty) sessionDates.add(d);
+      }
+      for (final doc in inProgressSnap.docs) {
+        final d = doc.data()['activeDate']?.toString();
+        if (d != null && d.isNotEmpty) sessionDates.add(d);
+      }
+      if (isUsedToday) {
+        sessionDates.add(todayLocalStr);
+      }
+      final allKnownDates = <String>{
+        ...t.recentActiveDates,
+        ...sessionDates,
+      };
+      final enrichedActiveDays = max(
+        t.activeDaysCount,
+        max(
+          allKnownDates.length,
+          (t.sessionCount > 0 ||
+                  activeCount > 0 ||
+                  staleCount > 0 ||
+                  isUsedToday)
+              ? 1
+              : 0,
+        ),
+      );
+
+      // Compute uncredited in-progress usage so totalObservedUsageSeconds doesn't double-count
+      var uncreditedUsageSeconds = 0;
+      for (final doc in inProgressSnap.docs) {
+        final data = doc.data();
+        final dur = (data['durationSeconds'] as num?)?.toInt() ?? 0;
+        final synced = (data['syncedTesterUsageSeconds'] as num?)?.toInt() ?? 0;
+        uncreditedUsageSeconds += max(0, dur - synced);
+      }
+
+      // Background heal activeDaysCount in Firestore if it was stored as 0 or undercounted
+      final shouldUpdateActiveDays = enrichedActiveDays > t.activeDaysCount;
+      final shouldUpdateDates =
+          allKnownDates.length > t.recentActiveDates.length;
+      if (shouldUpdateActiveDays || shouldUpdateDates) {
+        try {
+          firestore.collection('testers').doc(t.testerId).set({
+            if (shouldUpdateActiveDays) 'activeDaysCount': enrichedActiveDays,
+            if (shouldUpdateDates)
+              'recentActiveDates': allKnownDates.toList()..sort(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true)).ignore();
+        } catch (_) {}
+      }
+
       return t.copyWith(
         platform: recPlatform,
         deviceModel: recDeviceModel,
         osVersion: recOsVersion,
         appVersion: recAppVersion,
+        activeDaysCount: enrichedActiveDays,
+        recentActiveDates: allKnownDates.toList()..sort(),
         inProgressSessionCount: activeCount + staleCount,
-        inProgressUsageSeconds: activeDur + staleDur,
+        inProgressUsageSeconds: uncreditedUsageSeconds,
         activeSessionCount: activeCount,
         activeUsageSeconds: activeDur,
         staleSessionCount: staleCount,

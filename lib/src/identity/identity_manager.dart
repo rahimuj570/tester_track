@@ -26,7 +26,10 @@ class IdentityManager {
   static bool isValidTesterId(String? testerId) {
     if (testerId == null) return false;
     final trimmed = testerId.trim();
-    if (trimmed.isEmpty || trimmed == '.' || trimmed == '..' || trimmed.startsWith('__')) {
+    if (trimmed.isEmpty ||
+        trimmed == '.' ||
+        trimmed == '..' ||
+        trimmed.startsWith('__')) {
       return false;
     }
     return _validTesterIdRegex.hasMatch(trimmed);

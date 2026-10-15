@@ -123,8 +123,7 @@ class DashboardState extends ChangeNotifier {
 
   String get formattedActiveUsage => _formatSeconds(totalActiveUsageSeconds);
 
-  String get formattedTotalTodayUsage =>
-      _formatSeconds(totalTodayUsageSeconds);
+  String get formattedTotalTodayUsage => _formatSeconds(totalTodayUsageSeconds);
 
   /// Initializes the dashboard state by loading saved projects.
   Future<void> init() async {
@@ -507,7 +506,8 @@ class DashboardState extends ChangeNotifier {
   }
 
   /// Automatically finalizes all stale sessions (heartbeat > 5 mins) across testers.
-  Future<int> autoFinalizeStaleSessions({Duration timeout = const Duration(minutes: 5)}) async {
+  Future<int> autoFinalizeStaleSessions(
+      {Duration timeout = const Duration(minutes: 5)}) async {
     if (_activeProject == null) return 0;
 
     _isLoading = true;

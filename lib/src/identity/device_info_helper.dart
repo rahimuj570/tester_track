@@ -71,9 +71,10 @@ class DeviceInfoHelper {
               final manufacturer = androidInfo.manufacturer.trim();
               final model = androidInfo.model.trim();
               if (manufacturer.isNotEmpty && model.isNotEmpty) {
-                deviceModel = model.toLowerCase().startsWith(manufacturer.toLowerCase())
-                    ? model
-                    : '$manufacturer $model';
+                deviceModel =
+                    model.toLowerCase().startsWith(manufacturer.toLowerCase())
+                        ? model
+                        : '$manufacturer $model';
               } else if (model.isNotEmpty) {
                 deviceModel = model;
               } else if (manufacturer.isNotEmpty) {

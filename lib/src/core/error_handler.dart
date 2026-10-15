@@ -60,7 +60,8 @@ class TrackerErrorHandler {
       return await action();
     } catch (error, stackTrace) {
       if (isFatalFirebaseError(error)) {
-        tripCircuitBreaker('Fatal Firebase error during "${operationName ?? 'unnamed'}": $error');
+        tripCircuitBreaker(
+            'Fatal Firebase error during "${operationName ?? 'unnamed'}": $error');
       } else {
         log('Error during "${operationName ?? 'unnamed'}": $error\n$stackTrace');
       }
@@ -83,7 +84,8 @@ class TrackerErrorHandler {
       return action();
     } catch (error, stackTrace) {
       if (isFatalFirebaseError(error)) {
-        tripCircuitBreaker('Fatal Firebase error during "${operationName ?? 'unnamed'}": $error');
+        tripCircuitBreaker(
+            'Fatal Firebase error during "${operationName ?? 'unnamed'}": $error');
       } else {
         log('Error during "${operationName ?? 'unnamed'}": $error\n$stackTrace');
       }

@@ -25,7 +25,8 @@ void main() {
       expect(container.constraints?.maxHeight, equals(40));
     });
 
-    testWidgets('BrandWordmark renders logo, title, and tagline', (tester) async {
+    testWidgets('BrandWordmark renders logo, title, and tagline',
+        (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -44,7 +45,8 @@ void main() {
       expect(find.text('Know who is actually testing.'), findsOneWidget);
     });
 
-    testWidgets('BrandWordmark hides tagline when showTagline is false', (tester) async {
+    testWidgets('BrandWordmark hides tagline when showTagline is false',
+        (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(

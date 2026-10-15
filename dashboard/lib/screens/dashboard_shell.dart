@@ -106,18 +106,15 @@ class _DashboardShellState extends State<DashboardShell> {
                     NavigationRailDestination(
                       icon: state.totalActiveSessionsCount > 0
                           ? Badge(
-                              label: Text(
-                                  '${state.totalActiveSessionsCount}'),
+                              label: Text('${state.totalActiveSessionsCount}'),
                               backgroundColor: AppTheme.warningColor,
                               textColor: Colors.black,
-                              child:
-                                  const Icon(Icons.people_outline_rounded),
+                              child: const Icon(Icons.people_outline_rounded),
                             )
                           : const Icon(Icons.people_outline_rounded),
                       selectedIcon: state.totalActiveSessionsCount > 0
                           ? Badge(
-                              label: Text(
-                                  '${state.totalActiveSessionsCount}'),
+                              label: Text('${state.totalActiveSessionsCount}'),
                               backgroundColor: AppTheme.warningColor,
                               textColor: Colors.black,
                               child: const Icon(Icons.people_rounded,
@@ -164,12 +161,10 @@ class _DashboardShellState extends State<DashboardShell> {
                     BottomNavigationBarItem(
                       icon: state.totalActiveSessionsCount > 0
                           ? Badge(
-                              label: Text(
-                                  '${state.totalActiveSessionsCount}'),
+                              label: Text('${state.totalActiveSessionsCount}'),
                               backgroundColor: AppTheme.warningColor,
                               textColor: Colors.black,
-                              child:
-                                  const Icon(Icons.people_outline_rounded),
+                              child: const Icon(Icons.people_outline_rounded),
                             )
                           : const Icon(Icons.people_outline_rounded),
                       label: 'Testers',
@@ -367,8 +362,8 @@ class _DashboardShellState extends State<DashboardShell> {
               label: Text('${state.totalInProgressSessionsCount}'),
               backgroundColor: AppTheme.warningColor,
               textColor: Colors.black,
-              child: const Icon(Icons.bolt_rounded,
-                  color: AppTheme.warningColor),
+              child:
+                  const Icon(Icons.bolt_rounded, color: AppTheme.warningColor),
             ),
             tooltip:
                 '${state.totalInProgressSessionsCount} in-progress sessions',

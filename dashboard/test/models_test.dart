@@ -173,5 +173,38 @@ void main() {
       expect(updated.minAppVersion, isNull);
       expect(updated.syncIntervalSeconds, equals(600));
     });
+
+    test('TesterViewModel.fromMap resolves activeDaysCount accurately', () {
+      final now = DateTime.now().toUtc();
+
+      // Case 1: activeDaysCount is 0 in map, but recentActiveDates has 3 dates
+      final t1 = TesterViewModel.fromMap('T_test1', {
+        'testerId': 'T_test1',
+        'authUid': 'uid_1',
+        'platform': 'android',
+        'firstSeen': now.toIso8601String(),
+        'lastSeen': now.toIso8601String(),
+        'sessionCount': 3,
+        'totalUsageSeconds': 500,
+        'activeDaysCount': 0,
+        'recentActiveDates': ['2026-10-10', '2026-10-11', '2026-10-12'],
+      });
+      expect(t1.activeDaysCount, greaterThanOrEqualTo(3));
+
+      // Case 2: activeDaysCount is 0 and recentActiveDates is empty, but sessionCount > 0
+      final t2 = TesterViewModel.fromMap('T_test2', {
+        'testerId': 'T_test2',
+        'authUid': 'uid_2',
+        'platform': 'android',
+        'firstSeen': now.toIso8601String(),
+        'lastSeen': now.toIso8601String(),
+        'sessionCount': 1,
+        'totalUsageSeconds': 100,
+        'activeDaysCount': 0,
+        'recentActiveDates': <String>[],
+      });
+      expect(t2.activeDaysCount, greaterThanOrEqualTo(1));
+      expect(t2.totalRecordedSessions, equals(1));
+    });
   });
 }

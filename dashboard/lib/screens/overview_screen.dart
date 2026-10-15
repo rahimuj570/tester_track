@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../state/dashboard_state.dart';
 import '../theme/app_theme.dart';
@@ -203,9 +204,8 @@ class OverviewScreen extends StatelessWidget {
                   ),
                   StatCard(
                     title: 'Total Sessions',
-                    value: state.totalActiveSessionsCount > 0
-                        ? '${state.totalRecordedSessionsCount}'
-                        : '${state.totalSessionsCount}',
+                    value:
+                        '${max(state.totalSessionsCount, state.totalRecordedSessionsCount)}',
                     subtitle: state.totalActiveSessionsCount > 0
                         ? '${state.totalSessionsCount} Finalized · ${state.totalActiveSessionsCount} Active'
                         : state.totalStaleSessionsCount > 0
@@ -216,10 +216,11 @@ class OverviewScreen extends StatelessWidget {
                   ),
                   StatCard(
                     title: 'Total Foreground Time',
-                    value: state.totalActiveUsageSeconds > 0
+                    value: state.totalObservedUsageSeconds >
+                            state.totalUsageSeconds
                         ? state.formattedTotalObservedUsage
                         : state.formattedTotalUsage,
-                    subtitle: state.totalActiveUsageSeconds > 0
+                    subtitle: state.totalActiveSessionsCount > 0
                         ? '${state.formattedTotalUsage} Finalized · ${state.formattedActiveUsage} Active'
                         : 'Observed active time only',
                     icon: Icons.hourglass_top_rounded,
@@ -421,6 +422,20 @@ class OverviewScreen extends StatelessWidget {
                     )
                   else
                     ...testers.take(5).map((t) {
+                      final totalSessions =
+                          max(t.sessionCount, t.totalRecordedSessions);
+                      final totalUsage = t.totalObservedUsageSeconds > 0
+                          ? t.formattedTotalUsageTime
+                          : t.formattedUsageTime;
+                      final activeDays = max(
+                        t.activeDaysCount,
+                        (totalSessions > 0 ||
+                                t.isUsedToday ||
+                                t.recentActiveDates.isNotEmpty)
+                            ? 1
+                            : 0,
+                      );
+
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
@@ -447,17 +462,31 @@ class OverviewScreen extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text(
-                              t.isCurrentlyActive
-                                  ? '${t.totalRecordedSessions} sessions (${t.formattedTotalUsageTime})'
-                                  : '${t.sessionCount} sessions (${t.formattedUsageTime})',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (t.isCurrentlyActive) ...[
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    margin: const EdgeInsets.only(right: 6),
+                                    decoration: const BoxDecoration(
+                                      color: AppTheme.successColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ],
+                                Text(
+                                  '$totalSessions ${totalSessions == 1 ? 'session' : 'sessions'} ($totalUsage)',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                             Text(
-                              '${t.activeDaysCount} active days',
+                              '$activeDays ${activeDays == 1 ? 'active day' : 'active days'}',
                               style: const TextStyle(
                                 color: AppTheme.textMuted,
                                 fontSize: 11,

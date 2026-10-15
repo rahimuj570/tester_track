@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 /// ViewModel representing a tester document (`testers/{testerId}`).
@@ -59,7 +60,8 @@ class TesterViewModel {
   int get totalRecordedSessions => sessionCount + inProgressSessionCount;
 
   /// Total observed usage seconds including finalized and in-progress.
-  int get totalObservedUsageSeconds => totalUsageSeconds + inProgressUsageSeconds;
+  int get totalObservedUsageSeconds =>
+      totalUsageSeconds + inProgressUsageSeconds;
 
   /// Formatted total observed usage time (finalized + in-progress).
   String get formattedTotalUsageTime {
@@ -151,9 +153,19 @@ class TesterViewModel {
       lastSeen: parsedLastSeen,
       sessionCount: (map['sessionCount'] as num?)?.toInt() ?? 0,
       totalUsageSeconds: (map['totalUsageSeconds'] as num?)?.toInt() ?? 0,
-      activeDaysCount:
-          (map['activeDaysCount'] as num?)?.toInt() ?? parsedDates.length,
-      recentActiveDates: parsedDates,
+      activeDaysCount: max(
+        (map['activeDaysCount'] as num?)?.toInt() ?? 0,
+        max(
+          {...parsedDates, if (isTodayInitial) todayLocalStr}.length,
+          (((map['sessionCount'] as num?)?.toInt() ?? 0) > 0 ||
+                  isTodayInitial ||
+                  parsedDates.isNotEmpty)
+              ? 1
+              : 0,
+        ),
+      ),
+      recentActiveDates:
+          {...parsedDates, if (isTodayInitial) todayLocalStr}.toList()..sort(),
       isUsedToday: isTodayInitial,
       todayUsageSeconds: (map['todayUsageSeconds'] as num?)?.toInt() ?? 0,
       todaySessionsCount: (map['todaySessionsCount'] as num?)?.toInt() ?? 0,
